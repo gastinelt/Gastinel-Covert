@@ -1,0 +1,38 @@
+# Build Artifacts
+/target/
+**/*.rs.bk
+
+# Vault and Camouflage Artifacts
+*.vault
+*.bin
+*.bak
+*.tmp
+*.swp
+*.log
+dx12_pipeline.*
+
+# Secrets, Credentials, and Keys
+*credential*
+*secret*
+*password*
+*.pem
+*.key
+*.pub
+*.id_rsa
+*.id_ed25519
+id_rsa
+id_ed25519
+id_ecdsa
+id_dsa
+.env
+.env.*
+
+# Windows OS artifacts
+Thumbs.db
+Desktop.ini
+
+# Compiled binaries (build artifacts)
+*.exe
+
+# Internal agent process files
+.agents/

@@ -1,0 +1,967 @@
+import { Theme, StyledButton, StyledInput, CategoryBadge } from "theme.slint";
+
+export struct ItemSummary {
+    id: string,
+    title: string,
+    category: string,
+    subtitle: string,
+}
+
+export struct ItemDetail {
+    id: string,
+    category: string,
+    title: string,
+    username: string,
+    password_masked: string,
+    password_plain: string,
+    is_revealed: bool,
+    url: string,
+    notes: string,
+    auto_type_sequence: string,
+    ssh_key_type: string,
+    ssh_public_key: string,
+    api_service: string,
+}
+
+export component DashboardView inherits Rectangle {
+    in-out property <string> vault-name: "Gastinel Covert";
+    in-out property <string> security-status: "Déverrouillé";
+    in-out property <string> inactivity-time: "15:00";
+    in-out property <string> active-category: "All"; // "All" | "Web" | "SSH" | "ApiKey" | "Note" | "RawSecret"
+    in-out property <string> search-query: "";
+    in-out property <[ItemSummary]> items: [];
+    in-out property <string> selected-item-id: "";
+    in-out property <ItemDetail> selected-item;
+    in-out property <bool> is-editing: false;
+    in-out property <bool> is-creating: false;
+
+    // Edit form fields
+    in-out property <string> form-title: "";
+    in-out property <string> form-category: "Web";
+    in-out property <string> form-username: "";
+    in-out property <string> form-password: "";
+    in-out property <string> form-url: "";
+    in-out property <string> form-notes: "";
+    in-out property <string> form-autotype: "";
+
+    callback lock-vault();
+    callback select-category(string);
+    callback search-changed(string);
+    callback select-item(string);
+    callback create-new-item();
+    callback edit-current-item();
+    callback cancel-edit();
+    callback save-item(string, string, string, string, string, string, string); // id, title, cat, user, pass, url, notes
+    callback delete-item(string);
+    callback reveal-secret(string);
+    callback hide-secret(string);
+    callback copy-field(string, string); // id, field_name ("username" | "password" | "url" | "notes")
+    callback autotype-item(string);
+
+    background: Theme.surface;
+
+    HorizontalLayout {
+        spacing: 0px;
+
+        // ==========================================
+        // COLONNE 1 : Barre latérale de navigation
+        // ==========================================
+        Rectangle {
+            width: 230px;
+            background: Theme.background;
+            border-width: 1px;
+            border-color: Theme.border;
+
+            VerticalLayout {
+                padding: 16px;
+                spacing: 16px;
+
+                // En-tête statut sécurité
+                Rectangle {
+                    border-radius: Theme.radius-md;
+                    background: Theme.surface;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    height: 54px;
+
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        alignment: start;
+                        spacing: 10px;
+
+                        // Pastille verte
+                        Rectangle {
+                            width: 12px;
+                            height: 12px;
+                            border-radius: 6px;
+                            background: Theme.accent-emerald;
+                            border-width: 2px;
+                            border-color: Theme.accent-emerald-border;
+                            y: (parent.height - self.height) / 2;
+                        }
+
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 1px;
+
+                            Text {
+                                text: root.vault-name;
+                                font-family: Theme.font-family;
+                                font-size: 13px;
+                                font-weight: 700;
+                                color: Theme.text-primary;
+                            }
+
+                            Text {
+                                text: root.security-status;
+                                font-family: Theme.font-family;
+                                font-size: 11px;
+                                font-weight: 600;
+                                color: Theme.accent-emerald;
+                            }
+                        }
+                    }
+                }
+
+                // Titre Catégories
+                Text {
+                    text: "CATÉGORIES";
+                    font-family: Theme.font-family;
+                    font-size: 11px;
+                    font-weight: 700;
+                    color: Theme.text-muted;
+                    letter-spacing: 0.5px;
+                }
+
+                // Liste des Catégories
+                VerticalLayout {
+                    spacing: 4px;
+
+                    // Tous
+                    Rectangle {
+                        height: 34px;
+                        border-radius: Theme.radius-sm;
+                        background: root.active-category == "All" ? Theme.surface-active : Colors.transparent;
+
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            spacing: 8px;
+                            alignment: start;
+
+                            Text {
+                                text: "📁 Tous les secrets";
+                                font-family: Theme.font-family;
+                                font-size: 12px;
+                                font-weight: root.active-category == "All" ? 700 : 500;
+                                color: root.active-category == "All" ? Theme.accent-blue : Theme.text-primary;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        TouchArea {
+                            clicked => { root.select-category("All"); }
+                        }
+                    }
+
+                    // Web
+                    Rectangle {
+                        height: 34px;
+                        border-radius: Theme.radius-sm;
+                        background: root.active-category == "Web" ? Theme.surface-active : Colors.transparent;
+
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            spacing: 8px;
+                            alignment: start;
+
+                            Text {
+                                text: "🌐 Identifiants Web";
+                                font-family: Theme.font-family;
+                                font-size: 12px;
+                                font-weight: root.active-category == "Web" ? 700 : 500;
+                                color: root.active-category == "Web" ? Theme.accent-blue : Theme.text-primary;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        TouchArea {
+                            clicked => { root.select-category("Web"); }
+                        }
+                    }
+
+                    // SSH
+                    Rectangle {
+                        height: 34px;
+                        border-radius: Theme.radius-sm;
+                        background: root.active-category == "SSH" ? Theme.surface-active : Colors.transparent;
+
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            spacing: 8px;
+                            alignment: start;
+
+                            Text {
+                                text: "🔑 Clés SSH";
+                                font-family: Theme.font-family;
+                                font-size: 12px;
+                                font-weight: root.active-category == "SSH" ? 700 : 500;
+                                color: root.active-category == "SSH" ? Theme.accent-blue : Theme.text-primary;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        TouchArea {
+                            clicked => { root.select-category("SSH"); }
+                        }
+                    }
+
+                    // ApiKey
+                    Rectangle {
+                        height: 34px;
+                        border-radius: Theme.radius-sm;
+                        background: root.active-category == "ApiKey" ? Theme.surface-active : Colors.transparent;
+
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            spacing: 8px;
+                            alignment: start;
+
+                            Text {
+                                text: "⚡ Clés API";
+                                font-family: Theme.font-family;
+                                font-size: 12px;
+                                font-weight: root.active-category == "ApiKey" ? 700 : 500;
+                                color: root.active-category == "ApiKey" ? Theme.accent-blue : Theme.text-primary;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        TouchArea {
+                            clicked => { root.select-category("ApiKey"); }
+                        }
+                    }
+
+                    // Note
+                    Rectangle {
+                        height: 34px;
+                        border-radius: Theme.radius-sm;
+                        background: root.active-category == "Note" ? Theme.surface-active : Colors.transparent;
+
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            spacing: 8px;
+                            alignment: start;
+
+                            Text {
+                                text: "📝 Notes chiffrées";
+                                font-family: Theme.font-family;
+                                font-size: 12px;
+                                font-weight: root.active-category == "Note" ? 700 : 500;
+                                color: root.active-category == "Note" ? Theme.accent-blue : Theme.text-primary;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        TouchArea {
+                            clicked => { root.select-category("Note"); }
+                        }
+                    }
+
+                    // RawSecret
+                    Rectangle {
+                        height: 34px;
+                        border-radius: Theme.radius-sm;
+                        background: root.active-category == "RawSecret" ? Theme.surface-active : Colors.transparent;
+
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            spacing: 8px;
+                            alignment: start;
+
+                            Text {
+                                text: "🔒 Données brutes";
+                                font-family: Theme.font-family;
+                                font-size: 12px;
+                                font-weight: root.active-category == "RawSecret" ? 700 : 500;
+                                color: root.active-category == "RawSecret" ? Theme.accent-blue : Theme.text-primary;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        TouchArea {
+                            clicked => { root.select-category("RawSecret"); }
+                        }
+                    }
+                }
+
+                // Espace flexible
+                Rectangle {}
+
+                // Bas : Inactivité & Verrouillage
+                VerticalLayout {
+                    spacing: 8px;
+
+                    Rectangle {
+                        height: 28px;
+                        border-radius: Theme.radius-sm;
+                        background: Theme.surface;
+
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            alignment: space-between;
+
+                            Text {
+                                text: "Auto-lock :";
+                                font-family: Theme.font-family;
+                                font-size: 11px;
+                                color: Theme.text-muted;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: root.inactivity-time;
+                                font-family: "Consolas, monospace";
+                                font-size: 11px;
+                                font-weight: 600;
+                                color: Theme.text-secondary;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
+                    StyledButton {
+                        text: "Verrouiller (Ctrl+L)";
+                        kind: "danger";
+                        btn-height: 36px;
+                        font-size: 12px;
+                        clicked => { root.lock-vault(); }
+                    }
+                }
+            }
+        }
+
+        // ==========================================
+        // COLONNE 2 : Recherche & Liste des entrées
+        // ==========================================
+        Rectangle {
+            width: 310px;
+            background: Theme.surface;
+            border-width: 1px;
+            border-color: Theme.border;
+
+            VerticalLayout {
+                padding: 14px;
+                spacing: 12px;
+
+                // Barre de recherche
+                Rectangle {
+                    height: 38px;
+                    border-radius: Theme.radius-md;
+                    background: Theme.background;
+                    border-width: 1px;
+                    border-color: Theme.border;
+
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        spacing: 6px;
+                        alignment: start;
+
+                        Text {
+                            text: "🔍";
+                            font-size: 12px;
+                            vertical-alignment: center;
+                        }
+
+                        search-input := TextInput {
+                            text: root.search-query;
+                            font-family: Theme.font-family;
+                            font-size: 12px;
+                            color: Theme.text-primary;
+                            vertical-alignment: center;
+                            edited => {
+                                root.search-query = self.text;
+                                root.search-changed(self.text);
+                            }
+
+                            if self.text == "" && !self.has-focus: Text {
+                                text: "Rechercher un secret...";
+                                font-family: Theme.font-family;
+                                font-size: 12px;
+                                color: Theme.text-muted;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+
+                // Bouton Nouveau Secret
+                StyledButton {
+                    text: "+ Nouveau Secret";
+                    kind: "primary";
+                    btn-height: 34px;
+                    font-size: 12px;
+                    clicked => { root.create-new-item(); }
+                }
+
+                // Liste des entrées
+                Flickable {
+                    content-height: (root.items.length * 64px) + 20px;
+
+                    VerticalLayout {
+                        spacing: 6px;
+
+                        for item[i] in root.items: Rectangle {
+                            height: 58px;
+                            border-radius: Theme.radius-md;
+                            background: item.id == root.selected-item-id ? Theme.background : Theme.background;
+                            border-width: 1px;
+                            border-color: item.id == root.selected-item-id ? Theme.border-focus : Theme.border;
+
+                            // Left accent indicator for selected item
+                            if item.id == root.selected-item-id: Rectangle {
+                                width: 4px;
+                                height: parent.height - 8px;
+                                x: 4px;
+                                y: 4px;
+                                border-radius: 2px;
+                                background: Theme.accent-blue;
+                            }
+
+                            HorizontalLayout {
+                                padding-left: item.id == root.selected-item-id ? 16px : 12px;
+                                padding-right: 12px;
+                                alignment: space-between;
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 2px;
+
+                                    Text {
+                                        text: item.title;
+                                        font-family: Theme.font-family;
+                                        font-size: 13px;
+                                        font-weight: 600;
+                                        color: Theme.text-primary;
+                                        overflow: elide;
+                                    }
+
+                                    Text {
+                                        text: item.subtitle != "" ? item.subtitle : item.category;
+                                        font-family: Theme.font-family;
+                                        font-size: 11px;
+                                        color: Theme.text-secondary;
+                                        overflow: elide;
+                                    }
+                                }
+
+                                // Category Mini-tag
+                                Rectangle {
+                                    height: 20px;
+                                    border-radius: Theme.radius-sm;
+                                    background: Theme.surface;
+                                    border-width: 1px;
+                                    border-color: Theme.border;
+                                    y: (parent.height - self.height) / 2;
+
+                                    HorizontalLayout {
+                                        padding-left: 6px;
+                                        padding-right: 6px;
+                                        Text {
+                                            text: item.category;
+                                            font-family: Theme.font-family;
+                                            font-size: 10px;
+                                            font-weight: 600;
+                                            color: Theme.text-muted;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+                                }
+                            }
+
+                            TouchArea {
+                                clicked => { root.select-item(item.id); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ==========================================
+        // COLONNE 3 : Fiche détaillée ou Éditeur
+        // ==========================================
+        Rectangle {
+            background: Theme.background;
+
+            // CAS 1 : Aucun secret sélectionné et pas en création
+            if root.selected-item-id == "" && !root.is-creating: VerticalLayout {
+                alignment: center;
+                spacing: 8px;
+
+                Text {
+                    text: "🔒";
+                    font-size: 40px;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: "Sélectionnez un élément";
+                    font-family: Theme.font-family;
+                    font-size: 16px;
+                    font-weight: 700;
+                    color: Theme.text-primary;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: "Choisissez un secret dans la liste de gauche ou créez-en un nouveau.";
+                    font-family: Theme.font-family;
+                    font-size: 13px;
+                    color: Theme.text-secondary;
+                    horizontal-alignment: center;
+                }
+            }
+
+            // CAS 2 : Mode Édition ou Création
+            if root.is-editing || root.is-creating: Flickable {
+                content-height: 650px;
+
+                VerticalLayout {
+                    padding: 28px;
+                    spacing: 16px;
+
+                    // En-tête formulaire
+                    Text {
+                        text: root.is-creating ? "Créer un nouveau secret" : "Modifier le secret";
+                        font-family: Theme.font-family;
+                        font-size: 18px;
+                        font-weight: 700;
+                        color: Theme.text-primary;
+                    }
+
+                    // Sélecteur Catégorie
+                    VerticalLayout {
+                        spacing: 6px;
+                        Text {
+                            text: "Catégorie :";
+                            font-family: Theme.font-family;
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: Theme.text-secondary;
+                        }
+
+                        HorizontalLayout {
+                            spacing: 8px;
+
+                            CategoryBadge {
+                                text: "Web";
+                                active: root.form-category == "Web";
+                                clicked => { root.form-category = "Web"; }
+                            }
+                            CategoryBadge {
+                                text: "SSH";
+                                active: root.form-category == "SSH";
+                                clicked => { root.form-category = "SSH"; }
+                            }
+                            CategoryBadge {
+                                text: "ApiKey";
+                                active: root.form-category == "ApiKey";
+                                clicked => { root.form-category = "ApiKey"; }
+                            }
+                            CategoryBadge {
+                                text: "Note";
+                                active: root.form-category == "Note";
+                                clicked => { root.form-category = "Note"; }
+                            }
+                            CategoryBadge {
+                                text: "RawSecret";
+                                active: root.form-category == "RawSecret";
+                                clicked => { root.form-category = "RawSecret"; }
+                            }
+                        }
+                    }
+
+                    // Champ Titre
+                    StyledInput {
+                        label: "Titre du secret *";
+                        placeholder: "Ex: Google Workspace, GitHub...";
+                        text: root.form-title;
+                        edited(val) => { root.form-title = val; }
+                    }
+
+                    // Champs selon la catégorie
+                    if root.form-category == "Web": VerticalLayout {
+                        spacing: 12px;
+
+                        StyledInput {
+                            label: "URL du service";
+                            placeholder: "https://example.com/login";
+                            text: root.form-url;
+                            edited(val) => { root.form-url = val; }
+                        }
+
+                        StyledInput {
+                            label: "Nom d'utilisateur / Identifiant";
+                            placeholder: "user@domain.com";
+                            text: root.form-username;
+                            edited(val) => { root.form-username = val; }
+                        }
+
+                        StyledInput {
+                            label: "Mot de passe";
+                            placeholder: "••••••••••••";
+                            is-password: true;
+                            text: root.form-password;
+                            edited(val) => { root.form-password = val; }
+                        }
+                    }
+
+                    if root.form-category == "SSH": VerticalLayout {
+                        spacing: 12px;
+
+                        StyledInput {
+                            label: "Identifiant / Utilisateur distant";
+                            placeholder: "root, ubuntu...";
+                            text: root.form-username;
+                            edited(val) => { root.form-username = val; }
+                        }
+
+                        StyledInput {
+                            label: "Passphrase ou Clé Privée";
+                            placeholder: "Contenu chiffré...";
+                            is-password: true;
+                            text: root.form-password;
+                            edited(val) => { root.form-password = val; }
+                        }
+                    }
+
+                    if root.form-category == "ApiKey": VerticalLayout {
+                        spacing: 12px;
+
+                        StyledInput {
+                            label: "Service";
+                            placeholder: "AWS, OpenAI, Stripe...";
+                            text: root.form-username;
+                            edited(val) => { root.form-username = val; }
+                        }
+
+                        StyledInput {
+                            label: "Clé / Token API";
+                            placeholder: "sk-live-...";
+                            is-password: true;
+                            text: root.form-password;
+                            edited(val) => { root.form-password = val; }
+                        }
+                    }
+
+                    if root.form-category == "RawSecret": VerticalLayout {
+                        spacing: 12px;
+
+                        StyledInput {
+                            label: "Secret brut / Données confidentielles";
+                            placeholder: "Données secrètes chiffrées...";
+                            is-password: true;
+                            text: root.form-password;
+                            edited(val) => { root.form-password = val; }
+                        }
+                    }
+
+                    // Notes
+                    StyledInput {
+                        label: "Notes sécurisées";
+                        placeholder: "Informations complémentaires chiffrées...";
+                        text: root.form-notes;
+                        edited(val) => { root.form-notes = val; }
+                    }
+
+                    // Boutons Enregistrer / Annuler
+                    HorizontalLayout {
+                        spacing: 12px;
+                        alignment: end;
+
+                        StyledButton {
+                            text: "Annuler";
+                            kind: "secondary";
+                            clicked => { root.cancel-edit(); }
+                        }
+
+                        StyledButton {
+                            text: "Enregistrer";
+                            kind: "primary";
+                            enabled: root.form-title != "";
+                            clicked => {
+                                root.save-item(
+                                    root.selected-item-id,
+                                    root.form-title,
+                                    root.form-category,
+                                    root.form-username,
+                                    root.form-password,
+                                    root.form-url,
+                                    root.form-notes
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+            // CAS 3 : Mode Lecture Fiche Détail
+            if root.selected-item-id != "" && !root.is-editing && !root.is-creating: Flickable {
+                content-height: 600px;
+
+                VerticalLayout {
+                    padding: 28px;
+                    spacing: 20px;
+
+                    // Header Fiche
+                    HorizontalLayout {
+                        alignment: space-between;
+
+                        VerticalLayout {
+                            spacing: 4px;
+                            Text {
+                                text: root.selected-item.title;
+                                font-family: Theme.font-family;
+                                font-size: 22px;
+                                font-weight: 700;
+                                color: Theme.text-primary;
+                            }
+                            Text {
+                                text: "Catégorie : " + root.selected-item.category;
+                                font-family: Theme.font-family;
+                                font-size: 12px;
+                                color: Theme.text-secondary;
+                            }
+                        }
+
+                        // Boutons d'action rapides
+                        HorizontalLayout {
+                            spacing: 8px;
+
+                            StyledButton {
+                                text: "⚡ Remplir (Auto-Type)";
+                                kind: "emerald";
+                                btn-height: 34px;
+                                font-size: 12px;
+                                clicked => { root.autotype-item(root.selected-item.id); }
+                            }
+
+                            StyledButton {
+                                text: "Modifier";
+                                kind: "secondary";
+                                btn-height: 34px;
+                                font-size: 12px;
+                                clicked => { root.edit-current-item(); }
+                            }
+
+                            StyledButton {
+                                text: "Supprimer";
+                                kind: "danger";
+                                btn-height: 34px;
+                                font-size: 12px;
+                                clicked => { root.delete-item(root.selected-item.id); }
+                            }
+                        }
+                    }
+
+                    // Séparateur
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.border;
+                    }
+
+                    // Champs détaillés
+                    VerticalLayout {
+                        spacing: 14px;
+
+                        // URL
+                        if root.selected-item.url != "": Rectangle {
+                            border-radius: Theme.radius-md;
+                            background: Theme.surface;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            height: 52px;
+
+                            HorizontalLayout {
+                                padding-left: 14px;
+                                padding-right: 14px;
+                                alignment: space-between;
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 2px;
+                                    Text {
+                                        text: "URL / Site Web";
+                                        font-family: Theme.font-family;
+                                        font-size: 11px;
+                                        font-weight: 600;
+                                        color: Theme.text-secondary;
+                                    }
+                                    Text {
+                                        text: root.selected-item.url;
+                                        font-family: Theme.font-family;
+                                        font-size: 13px;
+                                        color: Theme.accent-blue;
+                                    }
+                                }
+
+                                StyledButton {
+                                    text: "Copier";
+                                    kind: "secondary";
+                                    btn-height: 28px;
+                                    font-size: 11px;
+                                    y: (parent.height - self.height) / 2;
+                                    clicked => { root.copy-field(root.selected-item.id, "url"); }
+                                }
+                            }
+                        }
+
+                        // Identifiant / Username
+                        if root.selected-item.username != "": Rectangle {
+                            border-radius: Theme.radius-md;
+                            background: Theme.surface;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            height: 52px;
+
+                            HorizontalLayout {
+                                padding-left: 14px;
+                                padding-right: 14px;
+                                alignment: space-between;
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 2px;
+                                    Text {
+                                        text: "Nom d'utilisateur / Identifiant";
+                                        font-family: Theme.font-family;
+                                        font-size: 11px;
+                                        font-weight: 600;
+                                        color: Theme.text-secondary;
+                                    }
+                                    Text {
+                                        text: root.selected-item.username;
+                                        font-family: Theme.font-family;
+                                        font-size: 13px;
+                                        font-weight: 600;
+                                        color: Theme.text-primary;
+                                    }
+                                }
+
+                                StyledButton {
+                                    text: "Copier";
+                                    kind: "secondary";
+                                    btn-height: 28px;
+                                    font-size: 11px;
+                                    y: (parent.height - self.height) / 2;
+                                    clicked => { root.copy-field(root.selected-item.id, "username"); }
+                                }
+                            }
+                        }
+
+                        // Mot de passe (protégé par Tier-2)
+                        if root.selected-item.category != "Note": Rectangle {
+                            border-radius: Theme.radius-md;
+                            background: Theme.surface;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            height: 58px;
+
+                            HorizontalLayout {
+                                padding-left: 14px;
+                                padding-right: 14px;
+                                alignment: space-between;
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 2px;
+                                    Text {
+                                        text: root.selected-item.category == "RawSecret" ? "Secret brut (Protégé Tier-2)" :
+                                              root.selected-item.category == "ApiKey" ? "Clé API (Protégée Tier-2)" :
+                                              root.selected-item.category == "SSH" ? "Passphrase / Clé (Protégée Tier-2)" :
+                                              "Mot de passe (Protégé Tier-2)";
+                                        font-family: Theme.font-family;
+                                        font-size: 11px;
+                                        font-weight: 600;
+                                        color: Theme.text-secondary;
+                                    }
+                                    Text {
+                                        text: root.selected-item.is_revealed ? root.selected-item.password_plain : root.selected-item.password_masked;
+                                        font-family: root.selected-item.is_revealed ? "Consolas, monospace" : Theme.font-family;
+                                        font-size: 14px;
+                                        font-weight: 700;
+                                        color: root.selected-item.is_revealed ? Theme.accent-emerald : Theme.text-primary;
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    y: (parent.height - self.height) / 2;
+
+                                    if !root.selected-item.is_revealed: StyledButton {
+                                        text: "Démasquer";
+                                        kind: "secondary";
+                                        btn-height: 28px;
+                                        font-size: 11px;
+                                        clicked => { root.reveal-secret(root.selected-item.id); }
+                                    }
+
+                                    if root.selected-item.is_revealed: StyledButton {
+                                        text: "Masquer";
+                                        kind: "secondary";
+                                        btn-height: 28px;
+                                        font-size: 11px;
+                                        clicked => { root.hide-secret(root.selected-item.id); }
+                                    }
+
+                                    StyledButton {
+                                        text: "Copier";
+                                        kind: "primary";
+                                        btn-height: 28px;
+                                        font-size: 11px;
+                                        clicked => { root.copy-field(root.selected-item.id, "password"); }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Notes
+                        if root.selected-item.notes != "": Rectangle {
+                            border-radius: Theme.radius-md;
+                            background: Theme.surface;
+                            border-width: 1px;
+                            border-color: Theme.border;
+
+                            VerticalLayout {
+                                padding: 14px;
+                                spacing: 6px;
+
+                                Text {
+                                    text: "Notes chiffrées :";
+                                    font-family: Theme.font-family;
+                                    font-size: 11px;
+                                    font-weight: 600;
+                                    color: Theme.text-secondary;
+                                }
+
+                                Text {
+                                    text: root.selected-item.notes;
+                                    font-family: Theme.font-family;
+                                    font-size: 13px;
+                                    color: Theme.text-primary;
+                                    wrap: word-wrap;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

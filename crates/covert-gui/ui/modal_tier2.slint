@@ -1,0 +1,198 @@
+import { Theme, StyledButton, StyledInput } from "theme.slint";
+
+export component ModalTier2 inherits Rectangle {
+    in-out property <bool> is-open: false;
+    in-out property <string> error-message: "";
+    in-out property <int> duration-choice: 60; // 0 = single use, 60 = 60s, 300 = 5min
+    in-out property <string> password <=> password-input.text;
+
+    callback confirmed(string, int);
+    callback cancelled();
+
+    visible: root.is-open;
+    background: #00000055;
+
+    // Click outside to cancel if clicked on backdrop
+    TouchArea {
+        clicked => { root.cancelled(); }
+    }
+
+    // Modal Card
+    Rectangle {
+        width: 440px;
+        height: 380px;
+        border-radius: Theme.radius-lg;
+        background: Theme.background;
+        border-width: 1px;
+        border-color: Theme.border;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #00000025;
+        drop-shadow-offset-y: 8px;
+
+        // Prevent click inside modal from closing
+        TouchArea {}
+
+        VerticalLayout {
+            padding: 24px;
+            spacing: 16px;
+
+            // Header
+            HorizontalLayout {
+                spacing: 12px;
+                alignment: space-between;
+
+                VerticalLayout {
+                    spacing: 4px;
+                    Text {
+                        text: "Défi de Sécurité Tier-2";
+                        font-family: Theme.font-family;
+                        font-size: 16px;
+                        font-weight: 700;
+                        color: Theme.text-primary;
+                    }
+                    Text {
+                        text: "Saisissez votre mot de passe de visualisation pour accéder au secret.";
+                        font-family: Theme.font-family;
+                        font-size: 12px;
+                        color: Theme.text-secondary;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+
+            // Error banner if any
+            if root.error-message != "": Rectangle {
+                height: 32px;
+                background: Theme.accent-danger-light;
+                border-radius: Theme.radius-sm;
+                border-width: 1px;
+                border-color: Theme.accent-danger;
+
+                Text {
+                    text: root.error-message;
+                    font-family: Theme.font-family;
+                    font-size: 11px;
+                    font-weight: 600;
+                    color: Theme.accent-danger;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+            }
+
+            // Password Input
+            password-input := StyledInput {
+                label: "Mot de passe Tier-2";
+                placeholder: "Entrez le mot de passe de vue...";
+                is-password: true;
+                accepted => {
+                    root.confirmed(self.text, root.duration-choice);
+                }
+            }
+
+            // TTL Selector
+            VerticalLayout {
+                spacing: 6px;
+                Text {
+                    text: "Durée d'autorisation :";
+                    font-family: Theme.font-family;
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: Theme.text-secondary;
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    // Option 1: Unique
+                    Rectangle {
+                        height: 34px;
+                        border-radius: Theme.radius-sm;
+                        background: root.duration-choice == 0 ? Theme.surface-active : Theme.surface;
+                        border-width: 1px;
+                        border-color: root.duration-choice == 0 ? Theme.border-focus : Theme.border;
+
+                        Text {
+                            text: "Usage unique";
+                            font-family: Theme.font-family;
+                            font-size: 11px;
+                            font-weight: 500;
+                            color: Theme.text-primary;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+
+                        TouchArea {
+                            clicked => { root.duration-choice = 0; }
+                        }
+                    }
+
+                    // Option 2: 60s
+                    Rectangle {
+                        height: 34px;
+                        border-radius: Theme.radius-sm;
+                        background: root.duration-choice == 60 ? Theme.surface-active : Theme.surface;
+                        border-width: 1px;
+                        border-color: root.duration-choice == 60 ? Theme.border-focus : Theme.border;
+
+                        Text {
+                            text: "60 secondes";
+                            font-family: Theme.font-family;
+                            font-size: 11px;
+                            font-weight: 500;
+                            color: Theme.text-primary;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+
+                        TouchArea {
+                            clicked => { root.duration-choice = 60; }
+                        }
+                    }
+
+                    // Option 3: 5 minutes
+                    Rectangle {
+                        height: 34px;
+                        border-radius: Theme.radius-sm;
+                        background: root.duration-choice == 300 ? Theme.surface-active : Theme.surface;
+                        border-width: 1px;
+                        border-color: root.duration-choice == 300 ? Theme.border-focus : Theme.border;
+
+                        Text {
+                            text: "5 minutes";
+                            font-family: Theme.font-family;
+                            font-size: 11px;
+                            font-weight: 500;
+                            color: Theme.text-primary;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+
+                        TouchArea {
+                            clicked => { root.duration-choice = 300; }
+                        }
+                    }
+                }
+            }
+
+            // Buttons
+            HorizontalLayout {
+                spacing: 12px;
+                alignment: end;
+
+                StyledButton {
+                    text: "Annuler";
+                    kind: "secondary";
+                    clicked => { root.cancelled(); }
+                }
+
+                StyledButton {
+                    text: "Valider";
+                    kind: "primary";
+                    clicked => {
+                        root.confirmed(password-input.text, root.duration-choice);
+                    }
+                }
+            }
+        }
+    }
+}

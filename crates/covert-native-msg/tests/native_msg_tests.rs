@@ -1,0 +1,150 @@
+//! Integration tests for covert-native-msg host.
+
+use covert_core::models::{Vault, VaultItem};
+use covert_native_msg::{NativeMessagingHost, QueryResponse};
+use std::io::Cursor;
+
+#[test]
+fn test_wire_framing_encode_decode() {
+    let json_msg = r#"{"type":"query","url":"https://github.com/login"}"#;
+    let framed = NativeMessagingHost::encode_string_message(json_msg);
+
+    assert!(framed.len() >= 4);
+    let decoded = NativeMessagingHost::decode_message(&framed).expect("decode");
+    assert_eq!(decoded, json_msg);
+}
+
+#[test]
+fn test_query_while_locked() {
+    let host = NativeMessagingHost::new();
+    assert!(!host.is_unlocked());
+
+    let req = r#"{"type":"query","url":"https://github.com"}"#;
+    let resp = host.handle_json_message(req);
+
+    let parsed: QueryResponse = serde_json::from_str(&resp).expect("parse response");
+    assert_eq!(parsed.status, "locked");
+    assert!(parsed.matches.is_empty());
+}
+
+#[test]
+fn test_query_while_unlocked_strict_domain_matching() {
+    let host = NativeMessagingHost::new();
+
+    let mut vault = Vault::new("Work Vault");
+    vault.add_item(VaultItem::new_credential(
+        "GitHub Work",
+        "work_user",
+        "work_pass",
+        Some("https://github.com/session".to_string()),
+    ));
+    vault.add_item(VaultItem::new_credential(
+        "GitLab Work",
+        "gitlab_user",
+        "gitlab_pass",
+        Some("https://gitlab.com/".to_string()),
+    ));
+    vault.add_item(VaultItem::new_ssh(
+        "SSH Deploy",
+        "ed25519",
+        "pub",
+        "priv",
+        None,
+        None,
+    ));
+
+    host.set_vault(vault);
+    assert!(host.is_unlocked());
+
+    // 1. Exact match on github.com
+    let resp_gh = host.handle_json_message(r#"{"type":"query","url":"https://github.com/login"}"#);
+    let parsed_gh: QueryResponse = serde_json::from_str(&resp_gh).expect("parse gh");
+    assert_eq!(parsed_gh.status, "ok");
+    assert_eq!(parsed_gh.matches.len(), 1);
+    assert_eq!(parsed_gh.matches[0].title, "GitHub Work");
+    assert_eq!(parsed_gh.matches[0].username.as_deref(), Some("work_user"));
+
+    // 2. Phishing URL strictly rejected
+    let resp_phish = host.handle_json_message(r#"{"type":"query","url":"https://evil-github.com/login"}"#);
+    let parsed_phish: QueryResponse = serde_json::from_str(&resp_phish).expect("parse phish");
+    assert_eq!(parsed_phish.status, "ok");
+    assert!(parsed_phish.matches.is_empty());
+
+    // 3. Different subdomain rejected
+    let resp_sub = host.handle_json_message(r#"{"type":"query","url":"https://api.github.com/v1"}"#);
+    let parsed_sub: QueryResponse = serde_json::from_str(&resp_sub).expect("parse sub");
+    assert_eq!(parsed_sub.status, "ok");
+    assert!(parsed_sub.matches.is_empty());
+
+    // 4. Lock vault
+    host.lock();
+    assert!(!host.is_unlocked());
+    let resp_locked = host.handle_json_message(r#"{"type":"query","url":"https://github.com/login"}"#);
+    let parsed_locked: QueryResponse = serde_json::from_str(&resp_locked).expect("parse locked");
+    assert_eq!(parsed_locked.status, "locked");
+}
+
+#[test]
+fn test_stdio_loop_roundtrip() {
+    let host = NativeMessagingHost::new();
+
+    let mut input_data = Vec::new();
+    let msg1 = r#"{"type":"status"}"#;
+    let frame1 = NativeMessagingHost::encode_string_message(msg1);
+    input_data.extend_from_slice(&frame1);
+
+    let reader = Cursor::new(input_data);
+    let mut writer = Cursor::new(Vec::new());
+
+    host.run_stdio_loop(reader, &mut writer).expect("run stdio loop");
+
+    let out_bytes = writer.into_inner();
+    let resp_str = NativeMessagingHost::decode_message(&out_bytes).expect("decode output");
+    assert!(resp_str.contains(r#""status":"ok""#));
+    assert!(resp_str.contains(r#""unlocked":false"#));
+}
+
+#[test]
+fn test_antiphishing_userinfo_and_url_spoofing() {
+    use covert_sentinel::{SecurityEvent, SecurityEventSink};
+
+    let host = NativeMessagingHost::new();
+    let mut vault = Vault::new("Security Vault");
+    vault.add_item(VaultItem::new_credential(
+        "Google Main",
+        "theodore@gmail.com",
+        "super_secret_pw",
+        Some("https://google.com/login".to_string()),
+    ));
+    host.set_vault(vault);
+
+    // 1. Legitimate login matches
+    let legit_resp = host.handle_json_message(r#"{"type":"query","url":"https://google.com/signin"}"#);
+    let legit: QueryResponse = serde_json::from_str(&legit_resp).expect("parse legit");
+    assert_eq!(legit.matches.len(), 1);
+    assert_eq!(legit.matches[0].title, "Google Main");
+
+    // 2. Phishing URL with userinfo spoofing (google.com@phishing.attacker.com)
+    let phish1_resp = host.handle_json_message(r#"{"type":"query","url":"https://google.com@attacker.com/login"}"#);
+    let phish1: QueryResponse = serde_json::from_str(&phish1_resp).expect("parse phish 1");
+    assert_eq!(phish1.matches.len(), 0, "Userinfo spoofing must not match google.com");
+
+    // 3. Phishing URL with port + password spoofing
+    let phish2_resp = host.handle_json_message(r#"{"type":"query","url":"https://google.com:password@phishing-target.net/auth"}"#);
+    let phish2: QueryResponse = serde_json::from_str(&phish2_resp).expect("parse phish 2");
+    assert_eq!(phish2.matches.len(), 0, "Userinfo with port spoofing must not match google.com");
+
+    // 4. Query string boundary
+    let legit_query = host.handle_json_message(r#"{"type":"query","url":"https://google.com?session=123"}"#);
+    let legit_q: QueryResponse = serde_json::from_str(&legit_query).expect("parse query string");
+    assert_eq!(legit_q.matches.len(), 1);
+
+    // 5. Sentinel intrusion alert triggers immediate lockdown
+    host.on_security_alert(SecurityEvent::DebuggerAttached);
+    assert!(!host.is_unlocked());
+
+    let locked_resp = host.handle_json_message(r#"{"type":"query","url":"https://google.com/login"}"#);
+    let locked: QueryResponse = serde_json::from_str(&locked_resp).expect("parse locked");
+    assert_eq!(locked.status, "locked");
+    assert!(locked.matches.is_empty());
+}

@@ -1,0 +1,267 @@
+import { Theme, StyledButton, StyledInput } from "theme.slint";
+
+export component UnlockView inherits Rectangle {
+    in-out property <int> step: 1; // 1 = Master Password, 2 = 2FA TOTP / Recovery
+    in-out property <string> vault-name: "Gastinel Covert";
+    in-out property <string> master-password: "";
+    in-out property <string> totp-code: "";
+    in-out property <bool> use-recovery-code: false;
+    in-out property <string> recovery-code: "";
+    in-out property <string> error-message: "";
+    in-out property <bool> is-locked-out: false;
+    in-out property <int> lockout-seconds-remaining: 0;
+
+    callback unlock-step1(string); // master_password
+    callback unlock-step2-totp(string); // totp_code
+    callback unlock-step2-recovery(string); // recovery_code
+    callback back-to-step1();
+
+    background: Theme.surface;
+
+    VerticalLayout {
+        alignment: center;
+
+        HorizontalLayout {
+            alignment: center;
+
+            // Centered Unlock Card
+            Rectangle {
+                width: 460px;
+                background: Theme.background;
+                border-radius: Theme.radius-xl;
+                border-width: 1px;
+                border-color: Theme.border;
+                drop-shadow-blur: 20px;
+                drop-shadow-color: #00000010;
+                drop-shadow-offset-y: 6px;
+
+                VerticalLayout {
+                    padding: 36px;
+                    spacing: 24px;
+
+                    // Brand & Icon
+                    VerticalLayout {
+                        spacing: 8px;
+                        alignment: center;
+
+                        Rectangle {
+                            width: 64px;
+                            height: 64px;
+                            border-radius: Theme.radius-lg;
+                            background: root.is-locked-out ? Theme.accent-danger-light : Theme.accent-emerald-light;
+                            border-width: 1px;
+                            border-color: root.is-locked-out ? Theme.accent-danger : Theme.accent-emerald-border;
+
+                            Text {
+                                text: root.is-locked-out ? "🔒" : "🛡️";
+                                font-size: 28px;
+                                vertical-alignment: center;
+                                horizontal-alignment: center;
+                            }
+                        }
+
+                        Text {
+                            text: root.vault-name;
+                            font-family: Theme.font-family;
+                            font-size: 20px;
+                            font-weight: 700;
+                            color: Theme.text-primary;
+                            horizontal-alignment: center;
+                        }
+
+                        Text {
+                            text: root.step == 1 ? "Coffre chiffré verrouillé" : "Étape 2 : Authentification 2FA";
+                            font-family: Theme.font-family;
+                            font-size: 13px;
+                            color: Theme.text-secondary;
+                            horizontal-alignment: center;
+                        }
+                    }
+
+                    // Lockout Banner
+                    if root.is-locked-out: Rectangle {
+                        border-radius: Theme.radius-md;
+                        background: Theme.accent-danger-light;
+                        border-width: 1px;
+                        border-color: Theme.accent-danger;
+
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 4px;
+
+                            Text {
+                                text: "Protection anti-brute-force active";
+                                font-family: Theme.font-family;
+                                font-size: 12px;
+                                font-weight: 700;
+                                color: Theme.accent-danger;
+                                horizontal-alignment: center;
+                            }
+
+                            Text {
+                                text: "Déverrouillage bloqué. Réessayez dans " + root.lockout-seconds-remaining + " s.";
+                                font-family: Theme.font-family;
+                                font-size: 11px;
+                                color: Theme.accent-danger;
+                                horizontal-alignment: center;
+                            }
+                        }
+                    }
+
+                    // Error Banner (if not locked out)
+                    if !root.is-locked-out && root.error-message != "": Rectangle {
+                        height: 36px;
+                        border-radius: Theme.radius-md;
+                        background: Theme.accent-danger-light;
+                        border-width: 1px;
+                        border-color: Theme.accent-danger;
+
+                        Text {
+                            text: root.error-message;
+                            font-family: Theme.font-family;
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: Theme.accent-danger;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+                    }
+
+                    // STEP 1 : Master Password
+                    if root.step == 1: VerticalLayout {
+                        spacing: 16px;
+
+                        pw-input := StyledInput {
+                            label: "Mot de passe Maître";
+                            placeholder: "Entrez votre mot de passe maître...";
+                            is-password: true;
+                            enabled: !root.is-locked-out;
+                            text: root.master-password;
+                            edited(val) => { root.master-password = val; }
+                            accepted => {
+                                if !root.is-locked-out && self.text != "" {
+                                    root.unlock-step1(self.text);
+                                }
+                            }
+                        }
+
+                        StyledButton {
+                            text: "Continuer";
+                            kind: "primary";
+                            btn-height: 42px;
+                            font-size: 14px;
+                            enabled: !root.is-locked-out && root.master-password != "";
+                            clicked => {
+                                root.unlock-step1(root.master-password);
+                            }
+                        }
+                    }
+
+                    // STEP 2 : TOTP or Recovery Code
+                    if root.step == 2: VerticalLayout {
+                        spacing: 16px;
+
+                        if !root.use-recovery-code: VerticalLayout {
+                            spacing: 12px;
+
+                            totp-input := StyledInput {
+                                label: "Code TOTP (6 chiffres Aegis)";
+                                placeholder: "000000";
+                                text: root.totp-code;
+                                edited(val) => { root.totp-code = val; }
+                                accepted => {
+                                    if self.text != "" {
+                                        root.unlock-step2-totp(self.text);
+                                    }
+                                }
+                            }
+
+                            HorizontalLayout {
+                                alignment: center;
+                                TouchArea {
+                                    clicked => {
+                                        root.use-recovery-code = true;
+                                    }
+                                    Text {
+                                        text: "Utiliser un code de secours d'urgence";
+                                        font-family: Theme.font-family;
+                                        font-size: 12px;
+                                        font-weight: 600;
+                                        color: Theme.accent-blue;
+                                    }
+                                }
+                            }
+
+                            StyledButton {
+                                text: "Déverrouiller le coffre";
+                                kind: "emerald";
+                                btn-height: 42px;
+                                font-size: 14px;
+                                enabled: root.totp-code != "";
+                                clicked => {
+                                    root.unlock-step2-totp(root.totp-code);
+                                }
+                            }
+                        }
+
+                        if root.use-recovery-code: VerticalLayout {
+                            spacing: 12px;
+
+                            rec-input := StyledInput {
+                                label: "Code de secours d'urgence (Usage unique)";
+                                placeholder: "Ex: A1B2-C3D4";
+                                text: root.recovery-code;
+                                edited(val) => { root.recovery-code = val; }
+                                accepted => {
+                                    if self.text != "" {
+                                        root.unlock-step2-recovery(self.text);
+                                    }
+                                }
+                            }
+
+                            HorizontalLayout {
+                                alignment: center;
+                                TouchArea {
+                                    clicked => {
+                                        root.use-recovery-code = false;
+                                    }
+                                    Text {
+                                        text: "Retour au code TOTP";
+                                        font-family: Theme.font-family;
+                                        font-size: 12px;
+                                        font-weight: 600;
+                                        color: Theme.accent-blue;
+                                    }
+                                }
+                            }
+
+                            StyledButton {
+                                text: "Consommer le code & Déverrouiller";
+                                kind: "emerald";
+                                btn-height: 42px;
+                                font-size: 14px;
+                                enabled: root.recovery-code != "";
+                                clicked => {
+                                    root.unlock-step2-recovery(root.recovery-code);
+                                }
+                            }
+                        }
+
+                        HorizontalLayout {
+                            alignment: start;
+                            StyledButton {
+                                text: "← Retour";
+                                kind: "ghost";
+                                btn-height: 32px;
+                                font-size: 12px;
+                                clicked => {
+                                    root.back-to-step1();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,339 @@
+import { Theme, StyledButton, StyledInput } from "theme.slint";
+
+export component OnboardingView inherits Rectangle {
+    in-out property <string> vault-name: "Mon Coffre";
+    in-out property <string> master-password: "";
+    in-out property <string> confirm-password: "";
+    in-out property <bool> enable-totp: true;
+    in-out property <string> totp-secret: "";
+    in-out property <[string]> recovery-codes: [];
+    in-out property <string> tier2-password: "";
+    in-out property <string> error-message: "";
+
+    callback init-vault(string, string, bool, string); // name, master_pw, enable_totp, tier2_pw
+    callback copy-totp-secret();
+    callback copy-recovery-codes();
+    callback refresh-totp();
+
+    background: Theme.surface;
+
+    Flickable {
+        content-height: 820px;
+
+        VerticalLayout {
+            padding: 32px;
+            alignment: start;
+            spacing: 20px;
+
+            // Header Banner
+            Rectangle {
+                border-radius: Theme.radius-lg;
+                background: Theme.background;
+                border-width: 1px;
+                border-color: Theme.border;
+                height: 100px;
+
+                HorizontalLayout {
+                    padding: 20px;
+                    spacing: 16px;
+                    alignment: start;
+
+                    Rectangle {
+                        width: 56px;
+                        height: 56px;
+                        border-radius: Theme.radius-md;
+                        background: Theme.accent-emerald-light;
+                        border-width: 1px;
+                        border-color: Theme.accent-emerald-border;
+
+                        Text {
+                            text: "🛡️";
+                            font-size: 24px;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 4px;
+                        alignment: center;
+
+                        Text {
+                            text: "Bienvenue sur Gastinel Covert";
+                            font-family: Theme.font-family;
+                            font-size: 18px;
+                            font-weight: 700;
+                            color: Theme.text-primary;
+                        }
+
+                        Text {
+                            text: "Initialisation sécurisée de votre coffre-fort numérique chiffré.";
+                            font-family: Theme.font-family;
+                            font-size: 13px;
+                            color: Theme.text-secondary;
+                        }
+                    }
+                }
+            }
+
+            // Error Message
+            if root.error-message != "": Rectangle {
+                height: 38px;
+                border-radius: Theme.radius-md;
+                background: Theme.accent-danger-light;
+                border-width: 1px;
+                border-color: Theme.accent-danger;
+
+                Text {
+                    text: root.error-message;
+                    font-family: Theme.font-family;
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: Theme.accent-danger;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+            }
+
+            // Step 1: Nom & Mot de passe Maître
+            Rectangle {
+                border-radius: Theme.radius-lg;
+                background: Theme.background;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 14px;
+
+                    Text {
+                        text: "1. Paramètres du coffre & Mot de passe Maître";
+                        font-family: Theme.font-family;
+                        font-size: 14px;
+                        font-weight: 700;
+                        color: Theme.text-primary;
+                    }
+
+                    name-input := StyledInput {
+                        label: "Nom du coffre";
+                        placeholder: "Ex: Coffre Personnel";
+                        text: root.vault-name;
+                        edited(val) => { root.vault-name = val; }
+                    }
+
+                    master-input := StyledInput {
+                        label: "Mot de passe Maître (Fort, minimum 8 caractères)";
+                        placeholder: "Mot de passe principal";
+                        is-password: true;
+                        edited(val) => { root.master-password = val; }
+                    }
+
+                    confirm-input := StyledInput {
+                        label: "Confirmer le Mot de passe Maître";
+                        placeholder: "Répétez le mot de passe";
+                        is-password: true;
+                        edited(val) => { root.confirm-password = val; }
+                    }
+                }
+            }
+
+            // Step 2: 2FA Aegis TOTP & Secours
+            Rectangle {
+                border-radius: Theme.radius-lg;
+                background: Theme.background;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 14px;
+
+                    HorizontalLayout {
+                        alignment: space-between;
+                        Text {
+                            text: "2. Authentification à deux facteurs (2FA Aegis TOTP)";
+                            font-family: Theme.font-family;
+                            font-size: 14px;
+                            font-weight: 700;
+                            color: Theme.text-primary;
+                            vertical-alignment: center;
+                        }
+
+                        StyledButton {
+                            text: root.enable-totp ? "2FA Activé (Recommandé)" : "2FA Désactivé";
+                            kind: root.enable-totp ? "emerald" : "secondary";
+                            btn-height: 28px;
+                            font-size: 11px;
+                            clicked => { root.enable-totp = !root.enable-totp; }
+                        }
+                    }
+
+                    if root.enable-totp: VerticalLayout {
+                        spacing: 12px;
+
+                        // TOTP Secret Base32 Card
+                        Rectangle {
+                            border-radius: Theme.radius-md;
+                            background: Theme.surface;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            height: 60px;
+
+                            HorizontalLayout {
+                                padding-left: 14px;
+                                padding-right: 14px;
+                                alignment: space-between;
+                                spacing: 10px;
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 2px;
+                                    Text {
+                                        text: "Clé secrète TOTP (Base32 Aegis) :";
+                                        font-family: Theme.font-family;
+                                        font-size: 11px;
+                                        font-weight: 600;
+                                        color: Theme.text-secondary;
+                                    }
+                                    Text {
+                                        text: root.totp-secret != "" ? root.totp-secret : "Génération automatique...";
+                                        font-family: "Consolas, monospace";
+                                        font-size: 13px;
+                                        font-weight: 700;
+                                        color: Theme.accent-blue;
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    alignment: center;
+                                    spacing: 6px;
+
+                                    StyledButton {
+                                        text: "Copier la clé";
+                                        kind: "secondary";
+                                        btn-height: 30px;
+                                        font-size: 11px;
+                                        clicked => { root.copy-totp-secret(); }
+                                    }
+
+                                    StyledButton {
+                                        text: "Régénérer";
+                                        kind: "secondary";
+                                        btn-height: 30px;
+                                        font-size: 11px;
+                                        clicked => { root.refresh-totp(); }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Recovery Codes Card
+                        Rectangle {
+                            border-radius: Theme.radius-md;
+                            background: Theme.surface;
+                            border-width: 1px;
+                            border-color: Theme.border;
+
+                            VerticalLayout {
+                                padding: 14px;
+                                spacing: 10px;
+
+                                HorizontalLayout {
+                                    alignment: space-between;
+                                    Text {
+                                        text: "Codes de secours d'urgence (Usage unique) :";
+                                        font-family: Theme.font-family;
+                                        font-size: 11px;
+                                        font-weight: 600;
+                                        color: Theme.text-secondary;
+                                        vertical-alignment: center;
+                                    }
+
+                                    StyledButton {
+                                        text: "Copier tous les codes";
+                                        kind: "secondary";
+                                        btn-height: 26px;
+                                        font-size: 11px;
+                                        clicked => { root.copy-recovery-codes(); }
+                                    }
+                                }
+
+                                Text {
+                                    text: "Conservez ces codes hors-ligne. Ils permettent de déverrouiller votre coffre si vous perdez votre appareil 2FA.";
+                                    font-family: Theme.font-family;
+                                    font-size: 11px;
+                                    color: Theme.text-muted;
+                                }
+
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    for code[i] in root.recovery-codes: Text {
+                                        text: (i + 1) + ". " + code;
+                                        font-family: "Consolas, monospace";
+                                        font-size: 12px;
+                                        font-weight: 600;
+                                        color: Theme.text-primary;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Step 3: Tier-2 View Password (Optionnel)
+            Rectangle {
+                border-radius: Theme.radius-lg;
+                background: Theme.background;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 12px;
+
+                    Text {
+                        text: "3. Mot de passe de vue Tier-2 (Optionnel)";
+                        font-family: Theme.font-family;
+                        font-size: 14px;
+                        font-weight: 700;
+                        color: Theme.text-primary;
+                    }
+
+                    Text {
+                        text: "Protège spécifiquement le démasquage en clair et l'export presse-papier de vos mots de passe.";
+                        font-family: Theme.font-family;
+                        font-size: 12px;
+                        color: Theme.text-secondary;
+                    }
+
+                    StyledInput {
+                        label: "Mot de passe Tier-2 (Différent du mot de passe maître)";
+                        placeholder: "Laisser vide si non souhaité";
+                        is-password: true;
+                        edited(val) => { root.tier2-password = val; }
+                    }
+                }
+            }
+
+            // Action Button
+            HorizontalLayout {
+                alignment: end;
+                StyledButton {
+                    text: "Initialiser et créer mon coffre";
+                    kind: "primary";
+                    btn-height: 44px;
+                    font-size: 14px;
+                    clicked => {
+                        root.init-vault(
+                            root.vault-name,
+                            root.master-password,
+                            root.enable-totp,
+                            root.tier2-password
+                        );
+                    }
+                }
+            }
+        }
+    }
+}

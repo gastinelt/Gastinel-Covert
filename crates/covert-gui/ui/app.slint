@@ -1,0 +1,193 @@
+import { Theme } from "theme.slint";
+import { OnboardingView } from "onboarding.slint";
+import { UnlockView } from "unlock.slint";
+import { DashboardView, ItemSummary, ItemDetail } from "dashboard.slint";
+import { ModalTier2 } from "modal_tier2.slint";
+
+export { ItemSummary, ItemDetail }
+
+export component AppWindow inherits Window {
+    title: "Gastinel Covert";
+    icon: @image-url("assets/icon.png");
+    min_width: 960px;
+    min_height: 640px;
+    default_font_family: Theme.font-family;
+    background: Theme.background;
+
+    // Navigation & Screen Management
+    in-out property <string> current-view: "unlock"; // "onboarding" | "unlock" | "dashboard"
+    in-out property <string> toast-message: "";
+    in-out property <bool> toast-visible: false;
+
+    // Forwarding to Onboarding
+    in-out property <string> onb-vault-name <=> onboarding.vault-name;
+    in-out property <string> onb-master-password <=> onboarding.master-password;
+    in-out property <string> onb-confirm-password <=> onboarding.confirm-password;
+    in-out property <bool> onb-enable-totp <=> onboarding.enable-totp;
+    in-out property <string> onb-totp-secret <=> onboarding.totp-secret;
+    in-out property <[string]> onb-recovery-codes <=> onboarding.recovery-codes;
+    in-out property <string> onb-tier2-password <=> onboarding.tier2-password;
+    in-out property <string> onb-error-message <=> onboarding.error-message;
+
+    callback onb-init-vault(string, string, bool, string);
+    callback onb-copy-totp-secret();
+    callback onb-copy-recovery-codes();
+    callback onb-refresh-totp();
+
+    // Forwarding to Unlock
+    in-out property <int> unl-step <=> unlock.step;
+    in-out property <string> unl-vault-name <=> unlock.vault-name;
+    in-out property <string> unl-master-password <=> unlock.master-password;
+    in-out property <string> unl-totp-code <=> unlock.totp-code;
+    in-out property <bool> unl-use-recovery-code <=> unlock.use-recovery-code;
+    in-out property <string> unl-recovery-code <=> unlock.recovery-code;
+    in-out property <string> unl-error-message <=> unlock.error-message;
+    in-out property <bool> unl-is-locked-out <=> unlock.is-locked-out;
+    in-out property <int> unl-lockout-seconds <=> unlock.lockout-seconds-remaining;
+
+    callback unl-step1(string);
+    callback unl-step2-totp(string);
+    callback unl-step2-recovery(string);
+    callback unl-back();
+
+    // Forwarding to Dashboard
+    in-out property <string> dsh-vault-name <=> dashboard.vault-name;
+    in-out property <string> dsh-security-status <=> dashboard.security-status;
+    in-out property <string> dsh-inactivity-time <=> dashboard.inactivity-time;
+    in-out property <string> dsh-active-category <=> dashboard.active-category;
+    in-out property <string> dsh-search-query <=> dashboard.search-query;
+    in-out property <[ItemSummary]> dsh-items <=> dashboard.items;
+    in-out property <string> dsh-selected-item-id <=> dashboard.selected-item-id;
+    in-out property <ItemDetail> dsh-selected-item <=> dashboard.selected-item;
+    in-out property <bool> dsh-is-editing <=> dashboard.is-editing;
+    in-out property <bool> dsh-is-creating <=> dashboard.is-creating;
+    in-out property <string> dsh-form-title <=> dashboard.form-title;
+    in-out property <string> dsh-form-category <=> dashboard.form-category;
+    in-out property <string> dsh-form-username <=> dashboard.form-username;
+    in-out property <string> dsh-form-password <=> dashboard.form-password;
+    in-out property <string> dsh-form-url <=> dashboard.form-url;
+    in-out property <string> dsh-form-notes <=> dashboard.form-notes;
+
+    callback dsh-lock-vault();
+    callback dsh-select-category(string);
+    callback dsh-search-changed(string);
+    callback dsh-select-item(string);
+    callback dsh-create-new-item();
+    callback dsh-edit-current-item();
+    callback dsh-cancel-edit();
+    callback dsh-save-item(string, string, string, string, string, string, string);
+    callback dsh-delete-item(string);
+    callback dsh-reveal-secret(string);
+    callback dsh-hide-secret(string);
+    callback dsh-copy-field(string, string);
+    callback dsh-autotype-item(string);
+
+    // Forwarding to Tier2 Modal
+    in-out property <bool> t2-is-open <=> modal-tier2.is-open;
+    in-out property <string> t2-error-message <=> modal-tier2.error-message;
+    in-out property <string> t2-password <=> modal-tier2.password;
+    in-out property <int> t2-duration-choice <=> modal-tier2.duration-choice;
+
+    callback t2-confirmed(string, int);
+    callback t2-cancelled();
+
+    // Key shortcut handling: Ctrl+L to lock vault
+    forward-focus: key-handler;
+    key-handler := FocusScope {
+        key-pressed(event) => {
+            if event.modifiers.control && (event.text == "l" || event.text == "L") {
+                if root.current-view == "dashboard" {
+                    root.dsh-lock-vault();
+                    return accept;
+                }
+            }
+            return reject;
+        }
+
+        // MAIN CONTENT STACK
+        Rectangle {
+            width: 100%;
+            height: 100%;
+
+            // Screen: Onboarding
+            onboarding := OnboardingView {
+                visible: root.current-view == "onboarding";
+            init-vault(name, pw, totp, t2) => { root.onb-init-vault(name, pw, totp, t2); }
+            copy-totp-secret => { root.onb-copy-totp-secret(); }
+            copy-recovery-codes => { root.onb-copy-recovery-codes(); }
+            refresh-totp => { root.onb-refresh-totp(); }
+        }
+
+        // Screen: Unlock
+        unlock := UnlockView {
+            visible: root.current-view == "unlock";
+            unlock-step1(pw) => { root.unl-step1(pw); }
+            unlock-step2-totp(code) => { root.unl-step2-totp(code); }
+            unlock-step2-recovery(code) => { root.unl-step2-recovery(code); }
+            back-to-step1 => { root.unl-back(); }
+        }
+
+        // Screen: Dashboard
+        dashboard := DashboardView {
+            visible: root.current-view == "dashboard";
+            lock-vault => { root.dsh-lock-vault(); }
+            select-category(cat) => { root.dsh-select-category(cat); }
+            search-changed(q) => { root.dsh-search-changed(q); }
+            select-item(id) => { root.dsh-select-item(id); }
+            create-new-item => { root.dsh-create-new-item(); }
+            edit-current-item => { root.dsh-edit-current-item(); }
+            cancel-edit => { root.dsh-cancel-edit(); }
+            save-item(id, title, cat, user, pass, url, notes) => {
+                root.dsh-save-item(id, title, cat, user, pass, url, notes);
+            }
+            delete-item(id) => { root.dsh-delete-item(id); }
+            reveal-secret(id) => { root.dsh-reveal-secret(id); }
+            hide-secret(id) => { root.dsh-hide-secret(id); }
+            copy-field(id, fld) => { root.dsh-copy-field(id, fld); }
+            autotype-item(id) => { root.dsh-autotype-item(id); }
+        }
+
+        // Overlay: Tier-2 Challenge Modal
+        modal-tier2 := ModalTier2 {
+            confirmed(pw, dur) => { root.t2-confirmed(pw, dur); }
+            cancelled => { root.t2-cancelled(); }
+        }
+
+        // Toast Notification Overlay
+        if root.toast-visible: Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: parent.height - self.height - 24px;
+            height: 38px;
+            width: 320px;
+            border-radius: Theme.radius-md;
+            background: #1A1D20EE;
+            border-width: 1px;
+            border-color: #333333;
+            drop-shadow-blur: 12px;
+            drop-shadow-color: #00000030;
+
+            HorizontalLayout {
+                padding-left: 14px;
+                padding-right: 14px;
+                alignment: center;
+                spacing: 8px;
+
+                Text {
+                    text: "✓";
+                    font-size: 13px;
+                    color: Theme.accent-emerald;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: root.toast-message;
+                    font-family: Theme.font-family;
+                    font-size: 12px;
+                    font-weight: 500;
+                    color: #FFFFFF;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}
+}
