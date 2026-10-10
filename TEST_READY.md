@@ -3,7 +3,7 @@
 **Date**: 2026-09-28  
 **Architect**: `test_writer_e2e` (E2E Test Suite Architect)  
 **Status**: **READY FOR INTEGRATION & VERIFICATION**  
-**Workspace**: `C:\Users\theog\Documents\_CODE\Gastinel Covert`  
+**Workspace**: `<workspace root>`  
 **Test Crate**: `crates/e2e-tests`  
 **Test Spec**: `TEST_INFRA.md`  
 

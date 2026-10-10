@@ -186,7 +186,7 @@ impl SentinelMonitor {
 
 ## Code Layout
 ```
-C:\Users\theog\Documents\_CODE\Gastinel Covert\
+Gastinel Covert\
 ├── Cargo.toml
 ├── .gitignore
 ├── crates\
