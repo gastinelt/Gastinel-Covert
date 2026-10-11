@@ -1,0 +1,20 @@
+[package]
+name = "covert-storage"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+covert-core = { path = "../covert-core" }
+thiserror = "2.0"
+rand_core = { version = "0.6", features = ["std"] }
+
+[target.'cfg(windows)'.dependencies.windows-sys]
+version = "0.59"
+features = [
+    "Win32_Storage_FileSystem",
+    "Win32_Foundation",
+    "Win32_System_IO",
+]
+
+[dev-dependencies]
+tempfile = "3"
