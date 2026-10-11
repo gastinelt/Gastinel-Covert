@@ -4,11 +4,16 @@
 //! and remote control takeover (`WTS_SESSION_REMOTE_CONTROL`) events to trigger immediate vault lockdown.
 
 use crate::error::SentinelError;
-use crate::{SecurityEvent, SecurityEventSink};
+use crate::SecurityEventSink;
+#[cfg(windows)]
+use crate::SecurityEvent;
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(windows)]
 use std::sync::mpsc::{channel, Sender};
 use std::sync::Arc;
-use std::thread::{self, JoinHandle};
+use std::thread::JoinHandle;
+#[cfg(windows)]
+use std::thread;
 
 #[cfg(windows)]
 use windows::core::PCWSTR;
@@ -48,16 +53,17 @@ struct ThreadContext {
     sink: Arc<dyn SecurityEventSink>,
 }
 
+#[cfg(windows)]
 pub const WM_STOP_MONITOR: u32 = WM_USER + 42;
 
 impl SessionMonitor {
     /// Start listening for Windows session change events.
     pub fn start(sink: Arc<dyn SecurityEventSink>) -> Result<Self, SentinelError> {
         let stop_signal = Arc::new(AtomicBool::new(false));
-        let stop_clone = Arc::clone(&stop_signal);
 
         #[cfg(windows)]
         {
+            let stop_clone = Arc::clone(&stop_signal);
             let (tx_hwnd, rx_hwnd) = channel::<Result<isize, SentinelError>>();
 
             let handle = thread::Builder::new()

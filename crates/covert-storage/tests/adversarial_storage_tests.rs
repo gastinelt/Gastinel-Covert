@@ -212,6 +212,10 @@ fn test_adversarial_abort_locked_backup_preserves_primary_and_cleans_tmp() {
     assert_eq!(storage.load_raw_backup().unwrap(), v1_data);
 }
 
+// Win32 `ReplaceFileW` refuses to overwrite a read-only destination (a Windows guarantee).
+// On Unix, an atomic `rename` replaces a read-only file as long as the directory is writable,
+// so this read-only-abort behavior is verified on Windows targets only.
+#[cfg(windows)]
 #[test]
 fn test_adversarial_abort_readonly_destination_preserves_primary_and_cleans_tmp() {
     let temp_dir = TempDir::new().expect("TempDir");

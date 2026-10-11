@@ -3,7 +3,9 @@
 use crate::error::SentinelError;
 use crate::{SecurityEvent, SecurityEventSink};
 use std::collections::HashSet;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::SocketAddr;
+#[cfg(windows)]
+use std::net::{Ipv4Addr, SocketAddrV4};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};

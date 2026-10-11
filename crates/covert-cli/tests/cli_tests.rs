@@ -146,17 +146,22 @@ fn test_cli_autotype() {
     };
     execute_autotype(autotype_sim).expect("execute_autotype simulated");
 
-    // 2. Production mode (gracefully succeeds or warns in non-interactive sessions)
-    let autotype_prod = AutotypeArgs {
-        query: "GitHub".to_string(),
-        password: Some("MasterPass!".to_string()),
-        totp: None,
-        sequence: None,
-        delay: 0,
-        simulated: false,
-        path: Some(vault_path.clone()),
-    };
-    execute_autotype(autotype_prod).expect("execute_autotype prod");
+    // 2. Production mode (Windows-only: gracefully succeeds or warns in non-interactive
+    //    sessions). Off-Windows there is no Win32 SendInput backend — direct injection returns
+    //    an explicit "Windows only" error — so this path is exercised on Windows targets only.
+    #[cfg(windows)]
+    {
+        let autotype_prod = AutotypeArgs {
+            query: "GitHub".to_string(),
+            password: Some("MasterPass!".to_string()),
+            totp: None,
+            sequence: None,
+            delay: 0,
+            simulated: false,
+            path: Some(vault_path.clone()),
+        };
+        execute_autotype(autotype_prod).expect("execute_autotype prod");
+    }
 
     let _ = fs::remove_dir_all(&temp_dir);
 }

@@ -273,15 +273,26 @@ pub fn execute_autotype(args: AutotypeArgs) -> Result<(), Box<dyn std::error::Er
         println!("  Switch focus to target window within {} ms...", args.delay);
         std::thread::sleep(Duration::from_millis(args.delay));
 
-        let engine = AutoTypeEngine::new();
-        match engine.execute_sequence(sequence, target_item, live_totp.as_deref()) {
-            Ok(()) => {
-                println!("[SUCCESS] Keystrokes injected directly via Win32 SendInput without clipboard.");
+        #[cfg(windows)]
+        {
+            let engine = AutoTypeEngine::new();
+            match engine.execute_sequence(sequence, target_item, live_totp.as_deref()) {
+                Ok(()) => {
+                    println!("[SUCCESS] Keystrokes injected directly via Win32 SendInput without clipboard.");
+                }
+                Err(covert_autotype::AutoTypeError::SendInputFailed(5)) => {
+                    println!("[WARN] SendInput access denied (error 5: non-interactive desktop session). Sequence validated successfully.");
+                }
+                Err(e) => return Err(e.into()),
             }
-            Err(covert_autotype::AutoTypeError::SendInputFailed(5)) => {
-                println!("[WARN] SendInput access denied (error 5: non-interactive desktop session). Sequence validated successfully.");
-            }
-            Err(e) => return Err(e.into()),
+        }
+        #[cfg(not(windows))]
+        {
+            return Err(
+                "Direct keystroke injection via Win32 SendInput is only supported on Windows. \
+                 Re-run with --simulated to validate the sequence without OS injection."
+                    .into(),
+            );
         }
     }
     Ok(())

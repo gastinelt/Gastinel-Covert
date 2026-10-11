@@ -1,12 +1,15 @@
 //! Gastinel Covert Auto-Type Engine: direct keystroke injection via Win32 SendInput without clipboard.
 
 pub mod error;
+#[cfg(windows)]
 pub mod hotkey;
 pub mod parser;
 pub mod sendinput;
+#[cfg(windows)]
 pub mod window;
 
 pub use error::AutoTypeError;
+#[cfg(windows)]
 pub use hotkey::{
     HotkeyListener, HotkeyManager, DEFAULT_HOTKEY_ID, DEFAULT_HOTKEY_MODIFIERS, DEFAULT_HOTKEY_VK,
 };
@@ -17,8 +20,10 @@ pub use parser::{
 pub use secrecy::{ExposeSecret, SecretString};
 pub use sendinput::{
     send_char, KeyAction, KeystrokeBackend, RecordedEvent, SimulationBackend, VirtualKey,
-    Win32SendInputBackend,
 };
+#[cfg(windows)]
+pub use sendinput::Win32SendInputBackend;
+#[cfg(windows)]
 pub use window::WindowManager;
 
 use covert_core::models::VaultItem;
@@ -36,6 +41,10 @@ impl AutoTypeEngine {
     pub const DEFAULT_INTER_KEY_DELAY: Duration = Duration::from_millis(15);
 
     /// Create a new AutoTypeEngine using the production Win32 SendInput backend.
+    ///
+    /// Only available on Windows. On other platforms, construct the engine with
+    /// [`AutoTypeEngine::new_simulated`] or [`AutoTypeEngine::with_backend`].
+    #[cfg(windows)]
     pub fn new() -> Self {
         Self {
             backend: Arc::new(Win32SendInputBackend::new()),
@@ -198,6 +207,7 @@ impl AutoTypeEngine {
     }
 }
 
+#[cfg(windows)]
 impl Default for AutoTypeEngine {
     fn default() -> Self {
         Self::new()

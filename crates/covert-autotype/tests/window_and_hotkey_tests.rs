@@ -1,4 +1,7 @@
 //! Unit tests for WindowManager and HotkeyManager.
+//!
+//! These exercise the Win32-only window/hotkey layer and run on Windows targets only.
+#![cfg(windows)]
 
 use covert_autotype::{
     AutoTypeError, HotkeyManager, WindowManager, DEFAULT_HOTKEY_ID,

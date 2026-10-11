@@ -1,4 +1,8 @@
 //! Verification that Auto-Type has ZERO clipboard dependency.
+//!
+//! Uses the Win32 `GetClipboardSequenceNumber` oracle to prove the clipboard is never
+//! touched, so it runs on Windows targets only.
+#![cfg(windows)]
 
 use covert_autotype::{AutoTypeEngine, SecretString};
 use covert_core::models::VaultItem;

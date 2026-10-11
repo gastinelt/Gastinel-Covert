@@ -10,6 +10,8 @@
 
 use crate::error::ClipboardError;
 use covert_core::SecretString;
+// `expose_secret` is only needed by the Windows clipboard-write path.
+#[cfg(windows)]
 use secrecy_v08::ExposeSecret;
 
 /// Win32 clipboard format name preventing storage in Windows 10/11 clipboard history (Win+V).
@@ -82,7 +84,10 @@ pub fn get_clipboard_sequence_number() -> u32 {
     }
     #[cfg(not(windows))]
     {
-        0
+        // Portability mock: model a stable clipboard sequence equal to the value returned by
+        // `write_to_clipboard_with_flags` (also mocked to `1`), so the auto-wipe sequence-match
+        // logic stays internally consistent and testable on non-Windows targets.
+        1
     }
 }
 

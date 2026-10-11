@@ -4,11 +4,12 @@ use crate::error::AutoTypeError;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
+#[cfg(windows)]
 use windows::Win32::Foundation::GetLastError;
+#[cfg(windows)]
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     MapVirtualKeyW, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
-    KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, MAPVK_VK_TO_VSC, VIRTUAL_KEY, VK_A, VK_BACK, VK_CONTROL,
-    VK_ESCAPE, VK_RETURN, VK_SPACE, VK_TAB,
+    KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, MAPVK_VK_TO_VSC, VIRTUAL_KEY,
 };
 
 /// Supported virtual keys for control sequences.
@@ -26,15 +27,19 @@ pub enum VirtualKey {
 
 impl VirtualKey {
     /// Return the Win32 virtual-key code (`VIRTUAL_KEY`).
+    ///
+    /// The codes are the canonical Win32 `VK_*` values (e.g. `VK_TAB == 0x09`) expressed as
+    /// literals so this mapping stays platform-independent and is the exact inverse of
+    /// [`VirtualKey::from_vk_code`].
     pub fn to_vk_code(self) -> u16 {
         match self {
-            VirtualKey::Tab => VK_TAB.0,
-            VirtualKey::Return => VK_RETURN.0,
-            VirtualKey::Escape => VK_ESCAPE.0,
-            VirtualKey::Backspace => VK_BACK.0,
-            VirtualKey::Space => VK_SPACE.0,
-            VirtualKey::Control => VK_CONTROL.0,
-            VirtualKey::A => VK_A.0,
+            VirtualKey::Tab => 0x09,       // VK_TAB
+            VirtualKey::Return => 0x0D,     // VK_RETURN
+            VirtualKey::Escape => 0x1B,     // VK_ESCAPE
+            VirtualKey::Backspace => 0x08,  // VK_BACK
+            VirtualKey::Space => 0x20,      // VK_SPACE
+            VirtualKey::Control => 0x11,    // VK_CONTROL
+            VirtualKey::A => 0x41,          // VK_A
             VirtualKey::Custom(code) => code,
         }
     }
@@ -101,8 +106,12 @@ pub trait KeystrokeBackend: Send + Sync {
 }
 
 /// Real Win32 SendInput backend. Injects keystrokes directly into active window queue.
+///
+/// Only available on Windows; non-Windows builds use [`SimulationBackend`] or a custom backend.
+#[cfg(windows)]
 pub struct Win32SendInputBackend;
 
+#[cfg(windows)]
 impl Win32SendInputBackend {
     pub fn new() -> Self {
         Self
@@ -124,12 +133,14 @@ impl Win32SendInputBackend {
     }
 }
 
+#[cfg(windows)]
 impl Default for Win32SendInputBackend {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[cfg(windows)]
 impl KeystrokeBackend for Win32SendInputBackend {
     fn send_unicode_code_unit(&self, code_unit: u16) -> Result<(), AutoTypeError> {
         // Build key down and key up pair for SendInput

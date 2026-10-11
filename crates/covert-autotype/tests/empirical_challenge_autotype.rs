@@ -9,16 +9,20 @@
 
 use covert_autotype::{
     encode_utf16_events, interpolate, parse_sequence, send_char, AutoTypeEngine, AutoTypeError,
-    AutoTypeToken, KeyAction, KeystrokeBackend, RecordedEvent, SecretString, SimulatedKeystroke,
-    SimulationBackend, VirtualKey, Win32SendInputBackend,
+    AutoTypeToken, KeyAction, KeystrokeBackend, RecordedEvent, SimulatedKeystroke,
+    SimulationBackend, VirtualKey,
 };
 use covert_core::models::VaultItem;
+#[cfg(windows)]
+use covert_autotype::{SecretString, Win32SendInputBackend};
+#[cfg(windows)]
 use windows::Win32::System::DataExchange::GetClipboardSequenceNumber;
 
 // =========================================================================
 // Area 1: Keystroke Injection NEVER Touches or Alters the Windows Clipboard
 // =========================================================================
 
+#[cfg(windows)]
 #[test]
 fn test_challenge_clipboard_isolation_under_simulation_and_win32() {
     let initial_seq = unsafe { GetClipboardSequenceNumber() };

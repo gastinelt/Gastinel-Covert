@@ -205,13 +205,14 @@ Gastinel Covert\
 │   │   ├── lib.rs
 │   │   ├── totp.rs
 │   │   ├── lockout.rs
-│   │   ├── recovery.rs
+│   │   ├── tier2.rs
 │   │   ├── clipboard.rs
 │   │   └── error.rs
 │   ├── covert-autotype\src\
 │   │   ├── lib.rs
 │   │   ├── parser.rs
 │   │   ├── sendinput.rs
+│   │   ├── window.rs
 │   │   ├── hotkey.rs
 │   │   └── error.rs
 │   ├── covert-sentinel\src\
@@ -223,23 +224,33 @@ Gastinel Covert\
 │   │   └── error.rs
 │   ├── covert-gui\src\
 │   │   ├── main.rs
+│   │   ├── lib.rs
 │   │   ├── app.rs
 │   │   ├── state.rs
+│   │   ├── tray.rs
 │   │   └── ui\
 │   │       ├── app.slint
+│   │       ├── theme.slint
 │   │       ├── unlock.slint
+│   │       ├── onboarding.slint
 │   │       ├── dashboard.slint
-│   │       └── modal.slint
+│   │       └── modal_tier2.slint
 │   ├── covert-ssh\src\
 │   │   ├── lib.rs
 │   │   ├── agent.rs
+│   │   ├── protocol.rs
+│   │   ├── keys.rs
+│   │   ├── pipe.rs
 │   │   └── error.rs
 │   ├── covert-native-msg\src\
 │   │   ├── lib.rs
 │   │   ├── host.rs
 │   │   └── error.rs
 │   ├── covert-cli\src\
-│   │   └── main.rs
+│   │   ├── main.rs
+│   │   ├── lib.rs
+│   │   ├── args.rs
+│   │   └── commands.rs
 │   └── e2e-tests\
 │       ├── Cargo.toml
 │       └── tests\

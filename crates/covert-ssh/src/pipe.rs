@@ -1,7 +1,9 @@
 //! Windows Named Pipe (`\\.\pipe\openssh-ssh-agent`) with restricted DACL.
 
 use crate::error::SshAgentError;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
+#[cfg(windows)]
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 pub const DEFAULT_SSH_PIPE_NAME: &str = r"\\.\pipe\openssh-ssh-agent";
@@ -116,6 +118,9 @@ fn write_all(handle: windows::Win32::Foundation::HANDLE, mut data: &[u8]) -> Res
 }
 
 /// Serves requests from the OpenSSH named pipe until `stop_signal` is set.
+// `handler` is mutated only by the Windows named-pipe serving loop; the non-Windows stub just
+// consumes it, so `mut` is unused there.
+#[cfg_attr(not(windows), allow(unused_mut))]
 pub fn run_named_pipe_listener<F>(
     pipe_name: &str,
     stop_signal: Arc<AtomicBool>,
