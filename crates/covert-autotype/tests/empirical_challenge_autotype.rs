@@ -10,11 +10,11 @@
 use covert_autotype::{
     encode_utf16_events, interpolate, parse_sequence, send_char, AutoTypeEngine, AutoTypeError,
     AutoTypeToken, KeyAction, KeystrokeBackend, RecordedEvent, SimulatedKeystroke,
-    SimulationBackend, VirtualKey,
+    SimulationBackend,
 };
 use covert_core::models::VaultItem;
 #[cfg(windows)]
-use covert_autotype::{SecretString, Win32SendInputBackend};
+use covert_autotype::{SecretString, VirtualKey, Win32SendInputBackend};
 #[cfg(windows)]
 use windows::Win32::System::DataExchange::GetClipboardSequenceNumber;
 

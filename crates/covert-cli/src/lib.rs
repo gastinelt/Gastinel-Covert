@@ -1,5 +1,7 @@
 //! Library interface for covert-cli commands.
 
+#![forbid(unsafe_code)]
+
 pub mod args;
 pub mod commands;
 

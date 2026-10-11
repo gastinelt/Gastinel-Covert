@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # Real target: the full workspace, including the Slint GUI and every Win32 path.
+  # This is the authoritative gate for the Windows-only crates and the Tier 3/4 E2E suites.
+  test-windows:
+    name: Build & test (windows-latest, full workspace)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --workspace --locked
+      # `test_git_local_only_no_remotes` (R2 #16) intentionally fails in any clone that has a
+      # configured remote, so it cannot pass on a hosted runner. It is skipped here and still
+      # enforces the local-only requirement on a developer's remote-less clone.
+      - name: Test
+        run: cargo test --workspace --locked -- --skip test_git_local_only_no_remotes
+
+  # Portable gate: everything except the native Windows GUI, built and tested on Linux.
+  test-linux:
+    name: Build & test (ubuntu-latest, excluding GUI)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --workspace --exclude covert-gui --locked
+      - name: Test
+        run: cargo test --workspace --exclude covert-gui --locked -- --skip test_git_local_only_no_remotes
+
+  # Advisory only: the project has a pre-existing rustfmt / clippy backlog. These steps surface
+  # drift without blocking merges. Remove `continue-on-error` (and add `-- -D warnings` to clippy)
+  # once the backlog has been cleared.
+  lint:
+    name: Format & Clippy (advisory)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: rustfmt
+        continue-on-error: true
+        run: cargo fmt --all --check
+      - name: clippy
+        continue-on-error: true
+        run: cargo clippy --workspace --exclude covert-gui --all-targets
+
+  # Advisory: flags dependencies with known RustSec advisories. Promote to a required check
+  # once the tree is clean.
+  audit:
+    name: Dependency audit (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - run: cargo audit

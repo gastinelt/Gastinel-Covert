@@ -1,5 +1,7 @@
 //! Unified headless CLI binary for Gastinel Covert (`covert-cli`).
 
+#![forbid(unsafe_code)]
+
 use clap::Parser;
 use covert_cli::args::{Cli, Commands};
 use covert_cli::commands;

@@ -1,5 +1,8 @@
 //! Gastinel Covert Core Cryptographic Engine & Binary Vault Format.
 
+// The cryptographic core handles attacker-controlled vault bytes; it must contain no `unsafe`.
+#![forbid(unsafe_code)]
+
 pub mod crypto;
 pub mod error;
 pub mod header;
