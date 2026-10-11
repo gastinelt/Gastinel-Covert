@@ -64,16 +64,17 @@ jobs:
         continue-on-error: true
         run: cargo clippy --workspace --exclude covert-gui --all-targets
 
-  # Advisory: flags dependencies with known RustSec advisories. Promote to a required check
-  # once the tree is clean.
+  # Flags dependencies with known RustSec advisories. RUSTSEC-2023-0071 (Marvin timing
+  # side-channel in `rsa`, used only for RSA SSH-agent signing) has no upstream fix and lies
+  # outside the threat model; it is ignored here with the rationale recorded in SECURITY.md.
+  # "Unmaintained" entries are warnings and do not fail the job. Any NEW advisory will.
   audit:
-    name: Dependency audit (advisory)
+    name: Dependency audit
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-audit
-      - run: cargo audit
+      - run: cargo audit --ignore RUSTSEC-2023-0071
