@@ -148,3 +148,111 @@ fn test_antiphishing_userinfo_and_url_spoofing() {
     assert_eq!(locked.status, "locked");
     assert!(locked.matches.is_empty());
 }
+
+#[test]
+fn test_manifest_generation_and_allowed_origins_validation() {
+    use covert_native_msg::{
+        NativeMessagingManifest, NativeMsgError, DEFAULT_ALLOWED_ORIGIN, DEFAULT_MANIFEST_NAME,
+    };
+
+    let host = NativeMessagingHost::new();
+    let manifest = host
+        .generate_manifest(r"C:\Program Files\Gastinel\covert-cli.exe")
+        .expect("generate default manifest");
+    assert_eq!(manifest.name, DEFAULT_MANIFEST_NAME);
+    assert_eq!(manifest.r#type, "stdio");
+    assert_eq!(manifest.allowed_origins, vec![DEFAULT_ALLOWED_ORIGIN.to_string()]);
+
+    let json = manifest.to_json_pretty().expect("serialize manifest");
+    assert!(json.contains(r#""allowed_origins""#));
+    assert!(json.contains(DEFAULT_ALLOWED_ORIGIN));
+
+    // Reject empty allowed_origins
+    assert!(matches!(
+        NativeMessagingManifest::new(r"C:\covert-cli.exe", vec![]),
+        Err(NativeMsgError::InvalidManifest(_))
+    ));
+
+    // Reject wildcard origins
+    assert!(matches!(
+        NativeMessagingManifest::new(
+            r"C:\covert-cli.exe",
+            vec!["chrome-extension://*/".to_string()]
+        ),
+        Err(NativeMsgError::InvalidManifest(_))
+    ));
+
+    // Reject invalid length or non-lowercase extension IDs
+    assert!(matches!(
+        NativeMessagingManifest::new(
+            r"C:\covert-cli.exe",
+            vec!["chrome-extension://shortid/".to_string()]
+        ),
+        Err(NativeMsgError::InvalidManifest(_))
+    ));
+}
+
+#[test]
+fn test_caller_origin_whitelist_and_unauthorized_caller_rejection() {
+    use covert_native_msg::{NativeMsgError, DEFAULT_ALLOWED_ORIGIN, DEFAULT_EXTENSION_ID};
+
+    let host = NativeMessagingHost::with_allowed_origins(vec![DEFAULT_EXTENSION_ID.to_string()])
+        .expect("with_allowed_origins");
+
+    let mut vault = Vault::new("Protected Browser Vault");
+    vault.add_item(VaultItem::new_credential(
+        "GitHub",
+        "theo",
+        "secret_pw",
+        Some("https://github.com/login".to_string()),
+    ));
+    host.set_vault(vault);
+
+    // 1. Unverified caller without origin in payload is rejected even when vault is unlocked
+    let unverified_resp =
+        host.handle_json_message(r#"{"type":"query","url":"https://github.com/login"}"#);
+    assert!(
+        unverified_resp.contains(r#""status":"error""#)
+            && unverified_resp.contains("Unauthorized caller"),
+        "Unverified caller must be rejected: {}",
+        unverified_resp
+    );
+
+    // 2. Message with rogue extension_id / origin in JSON payload is rejected
+    let rogue_msg = r#"{"type":"query","url":"https://github.com/login","origin":"chrome-extension://rogueattackerextensionid00000000/"}"#;
+    let rogue_resp = host.handle_json_message(rogue_msg);
+    assert!(
+        rogue_resp.contains(r#""status":"error""#)
+            && rogue_resp.contains("Unauthorized caller origin"),
+        "Rogue extension origin must be rejected: {}",
+        rogue_resp
+    );
+
+    // 3. verify_caller and run_stdio_loop_for_caller reject unauthorized caller
+    let err = host
+        .verify_caller("chrome-extension://rogueattackerextensionid00000000/")
+        .unwrap_err();
+    assert!(matches!(err, NativeMsgError::UnauthorizedCaller(_)));
+
+    let dummy_in = Cursor::new(Vec::<u8>::new());
+    let mut dummy_out = Cursor::new(Vec::<u8>::new());
+    let loop_err = host
+        .run_stdio_loop_for_caller(
+            "chrome-extension://rogueattackerextensionid00000000/",
+            dummy_in,
+            &mut dummy_out,
+        )
+        .unwrap_err();
+    assert!(matches!(loop_err, NativeMsgError::UnauthorizedCaller(_)));
+
+    // 4. Authorized caller passes verify_caller and receives domain-matched credentials
+    host.verify_caller(DEFAULT_ALLOWED_ORIGIN)
+        .expect("Whitelisted extension origin must be accepted");
+
+    let ok_resp = host.handle_json_message(r#"{"type":"query","url":"https://github.com/login"}"#);
+    let parsed: QueryResponse = serde_json::from_str(&ok_resp).expect("parse ok response");
+    assert_eq!(parsed.status, "ok");
+    assert_eq!(parsed.matches.len(), 1);
+    assert_eq!(parsed.matches[0].title, "GitHub");
+}
+

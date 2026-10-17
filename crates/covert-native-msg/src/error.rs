@@ -18,4 +18,10 @@ pub enum NativeMsgError {
 
     #[error("Host error: {0}")]
     Host(String),
+
+    #[error("Unauthorized caller extension origin: {0}")]
+    UnauthorizedCaller(String),
+
+    #[error("Invalid Native Messaging manifest configuration: {0}")]
+    InvalidManifest(String),
 }

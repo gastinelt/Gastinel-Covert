@@ -7,7 +7,7 @@ use ed25519_dalek::ed25519::SignatureEncoding;
 use ed25519_dalek::{Signer, SigningKey};
 use rsa::pkcs1v15::SigningKey as RsaSigningKey;
 use rsa::RsaPrivateKey;
-use sha2::{Digest, Sha256, Sha512};
+use sha2::{Sha256, Sha512};
 use std::fmt;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -57,13 +57,15 @@ impl SshKeyEntry {
         } else if self.key_type.contains("rsa") {
             self.sign_rsa(data_to_sign, flags)
         } else {
-            // Generic signing fallback
-            self.sign_generic_fallback(data_to_sign)
+            Err(SshAgentError::KeyError(format!(
+                "Unsupported SSH key type for signing: {}",
+                self.key_type
+            )))
         }
     }
 
     fn sign_ed25519(&self, data_to_sign: &[u8]) -> Result<Vec<u8>, SshAgentError> {
-        // Attempt to parse standard 32-byte seed or 64-byte keypair
+        // Attempt to parse standard 32-byte seed, 64-byte keypair, hex seed, base64 seed, or PKCS#8 PEM
         let signing_key = if self.raw_private.len() == 32 {
             let mut seed = [0u8; 32];
             seed.copy_from_slice(&self.raw_private);
@@ -82,16 +84,16 @@ impl SshKeyEntry {
                 } else {
                     None
                 }
+            } else if let Ok(k) = ed25519_dalek::pkcs8::DecodePrivateKey::from_pkcs8_pem(s_trimmed) {
+                Some(k)
             } else if let Ok(b64_bytes) = base64_decode(s_trimmed) {
-                if b64_bytes.len() >= 32 {
+                if b64_bytes.len() == 32 || b64_bytes.len() == 64 {
                     let mut seed = [0u8; 32];
                     seed.copy_from_slice(&b64_bytes[..32]);
                     Some(SigningKey::from_bytes(&seed))
                 } else {
                     None
                 }
-            } else if let Ok(k) = ed25519_dalek::pkcs8::DecodePrivateKey::from_pkcs8_pem(s_trimmed) {
-                Some(k)
             } else {
                 None
             }
@@ -99,19 +101,10 @@ impl SshKeyEntry {
             None
         };
 
-        let raw_sig = if let Some(key) = signing_key {
-            key.sign(data_to_sign).to_vec()
-        } else {
-            // Deterministic HMAC-like fallback for mock test keys
-            let mut hasher = Sha256::new();
-            hasher.update(&self.raw_private);
-            hasher.update(data_to_sign);
-            let h = hasher.finalize();
-            let mut mock_sig = Vec::with_capacity(64);
-            mock_sig.extend_from_slice(&h);
-            mock_sig.extend_from_slice(&h);
-            mock_sig
-        };
+        let key = signing_key.ok_or_else(|| {
+            SshAgentError::KeyError("Failed to parse Ed25519 private key".to_string())
+        })?;
+        let raw_sig = key.sign(data_to_sign).to_vec();
 
         // Wire format: string "ssh-ed25519" + string raw_sig
         let mut sig_blob = Vec::new();
@@ -129,12 +122,12 @@ impl SshKeyEntry {
             "ssh-rsa"
         };
 
-        // Attempt to parse real RSA PEM / DER (PKCS#8 and PKCS#1)
+        // Parse real RSA PEM / DER (PKCS#8 and PKCS#1)
         let rsa_key = if let Ok(pem_str) = std::str::from_utf8(&self.raw_private) {
             use rsa::pkcs1::DecodeRsaPrivateKey;
             use rsa::pkcs8::DecodePrivateKey;
-            RsaPrivateKey::from_pkcs8_pem(pem_str)
-                .or_else(|_| RsaPrivateKey::from_pkcs1_pem(pem_str))
+            RsaPrivateKey::from_pkcs8_pem(pem_str.trim())
+                .or_else(|_| RsaPrivateKey::from_pkcs1_pem(pem_str.trim()))
                 .ok()
         } else {
             use rsa::pkcs1::DecodeRsaPrivateKey;
@@ -144,38 +137,23 @@ impl SshKeyEntry {
                 .ok()
         };
 
-        let raw_sig = if let Some(priv_key) = rsa_key {
-            if algo == "rsa-sha2-512" {
-                let signing_key = RsaSigningKey::<Sha512>::new(priv_key);
-                signing_key.sign(data_to_sign).to_vec()
-            } else {
-                let signing_key = RsaSigningKey::<Sha256>::new(priv_key);
-                signing_key.sign(data_to_sign).to_vec()
-            }
+        let priv_key = rsa_key.ok_or_else(|| {
+            SshAgentError::KeyError(
+                "Failed to parse RSA private key (expected PKCS#1 or PKCS#8 PEM/DER)".to_string(),
+            )
+        })?;
+
+        let raw_sig = if algo == "rsa-sha2-512" {
+            let signing_key = RsaSigningKey::<Sha512>::new(priv_key);
+            signing_key.sign(data_to_sign).to_vec()
         } else {
-            // Deterministic signature fallback for mock test RSA keys
-            let mut hasher = Sha256::new();
-            hasher.update(algo.as_bytes());
-            hasher.update(&self.raw_private);
-            hasher.update(data_to_sign);
-            hasher.finalize().to_vec()
+            let signing_key = RsaSigningKey::<Sha256>::new(priv_key);
+            signing_key.sign(data_to_sign).to_vec()
         };
 
         let mut sig_blob = Vec::new();
         WireStream::write_string(&mut sig_blob, algo.as_bytes());
         WireStream::write_string(&mut sig_blob, &raw_sig);
-        Ok(sig_blob)
-    }
-
-    fn sign_generic_fallback(&self, data_to_sign: &[u8]) -> Result<Vec<u8>, SshAgentError> {
-        let mut hasher = Sha256::new();
-        hasher.update(&self.raw_private);
-        hasher.update(data_to_sign);
-        let h = hasher.finalize();
-
-        let mut sig_blob = Vec::new();
-        WireStream::write_string(&mut sig_blob, self.key_type.as_bytes());
-        WireStream::write_string(&mut sig_blob, &h);
         Ok(sig_blob)
     }
 }

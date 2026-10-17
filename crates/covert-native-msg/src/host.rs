@@ -10,11 +10,76 @@ use std::sync::RwLock;
 /// Maximum allowed Native Messaging payload size (1 MB).
 pub const MAX_MESSAGE_SIZE: usize = 1024 * 1024;
 
+/// Default whitelisted Gastinel Covert Chromium/Edge/Brave extension ID (32 lowercase letters).
+pub const DEFAULT_EXTENSION_ID: &str = "gastinelcovertextensionidaaaaaaa";
+
+/// Default whitelisted Native Messaging caller origin.
+pub const DEFAULT_ALLOWED_ORIGIN: &str = "chrome-extension://gastinelcovertextensionidaaaaaaa/";
+
+/// Official Native Messaging Host manifest identifier.
+pub const DEFAULT_MANIFEST_NAME: &str = "com.gastinel.covert";
+
+/// Native Messaging Host manifest file structure (`com.gastinel.covert.json`) enforcing
+/// strict `allowed_origins` whitelisting.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NativeMessagingManifest {
+    pub name: String,
+    pub description: String,
+    pub path: String,
+    pub r#type: String,
+    pub allowed_origins: Vec<String>,
+}
+
+impl NativeMessagingManifest {
+    /// Constructs a validated Native Messaging manifest with an explicit `allowed_origins` whitelist.
+    pub fn new(host_exe_path: &str, allowed_origins: Vec<String>) -> Result<Self, NativeMsgError> {
+        if host_exe_path.trim().is_empty() {
+            return Err(NativeMsgError::InvalidManifest(
+                "Host executable path cannot be empty".to_string(),
+            ));
+        }
+        if allowed_origins.is_empty() {
+            return Err(NativeMsgError::InvalidManifest(
+                "allowed_origins whitelist cannot be empty".to_string(),
+            ));
+        }
+
+        let mut normalized_origins = Vec::with_capacity(allowed_origins.len());
+        for origin in allowed_origins {
+            let norm = NativeMessagingHost::normalize_origin(&origin).ok_or_else(|| {
+                NativeMsgError::InvalidManifest(format!(
+                    "Invalid or unsafe extension origin in allowed_origins: {}",
+                    origin
+                ))
+            })?;
+            if !normalized_origins.contains(&norm) {
+                normalized_origins.push(norm);
+            }
+        }
+
+        Ok(Self {
+            name: DEFAULT_MANIFEST_NAME.to_string(),
+            description: "Gastinel Covert Zero-Trust Password Manager Native Messaging Host"
+                .to_string(),
+            path: host_exe_path.to_string(),
+            r#type: "stdio".to_string(),
+            allowed_origins: normalized_origins,
+        })
+    }
+
+    /// Serializes the manifest to pretty-printed JSON.
+    pub fn to_json_pretty(&self) -> Result<String, NativeMsgError> {
+        Ok(serde_json::to_string_pretty(self)?)
+    }
+}
+
 /// Incoming query request from browser extension.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct QueryMessage {
     pub r#type: String,
     pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<String>,
 }
 
 /// Outgoing query response to browser extension.
@@ -32,10 +97,14 @@ pub struct MatchEntry {
     pub username: Option<String>,
 }
 
-/// Native Messaging Host state managing domain filtering and stdio communication.
+/// Native Messaging Host state managing extension origin whitelisting, caller verification,
+/// domain filtering, and stdio communication.
 pub struct NativeMessagingHost {
     is_vault_unlocked: AtomicBool,
     vault: RwLock<Option<Vault>>,
+    allowed_origins: RwLock<Vec<String>>,
+    require_caller_auth: AtomicBool,
+    caller_authorized: AtomicBool,
 }
 
 impl Default for NativeMessagingHost {
@@ -45,12 +114,114 @@ impl Default for NativeMessagingHost {
 }
 
 impl NativeMessagingHost {
-    /// Create a new host instance in locked state.
+    /// Create a new host instance in locked state with the default extension whitelist.
     pub fn new() -> Self {
         Self {
             is_vault_unlocked: AtomicBool::new(false),
             vault: RwLock::new(None),
+            allowed_origins: RwLock::new(vec![DEFAULT_ALLOWED_ORIGIN.to_string()]),
+            require_caller_auth: AtomicBool::new(false),
+            caller_authorized: AtomicBool::new(false),
         }
+    }
+
+    /// Create a new host instance enforcing strict caller verification against the provided
+    /// whitelist of extension IDs or `chrome-extension://<id>/` origins.
+    pub fn with_allowed_origins(origins: Vec<String>) -> Result<Self, NativeMsgError> {
+        let host = Self::new();
+        host.set_allowed_origins(origins)?;
+        host.require_caller_auth.store(true, Ordering::SeqCst);
+        Ok(host)
+    }
+
+    /// Validates that an extension ID is a strict 32-character lowercase ASCII identifier
+    /// without wildcards, path separators, or whitespace.
+    pub fn is_valid_extension_id(id: &str) -> bool {
+        id.len() == 32 && id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+    }
+
+    /// Normalizes a raw extension ID or `chrome-extension://<id>/` URL into canonical
+    /// `"chrome-extension://<id>/"` form, returning `None` if invalid or containing wildcards.
+    pub fn normalize_origin(origin_or_id: &str) -> Option<String> {
+        let trimmed = origin_or_id.trim();
+        if trimmed.is_empty() || trimmed.contains('*') {
+            return None;
+        }
+        let id = if let Some(rest) = trimmed.strip_prefix("chrome-extension://") {
+            rest.strip_suffix('/').unwrap_or(rest)
+        } else {
+            trimmed
+        };
+        if Self::is_valid_extension_id(id) {
+            Some(format!("chrome-extension://{}/", id))
+        } else {
+            None
+        }
+    }
+
+    /// Returns the currently configured `allowed_origins` whitelist.
+    pub fn allowed_origins(&self) -> Vec<String> {
+        self.allowed_origins.read().unwrap().clone()
+    }
+
+    /// Replaces the `allowed_origins` whitelist after validating every entry.
+    pub fn set_allowed_origins(&self, origins: Vec<String>) -> Result<(), NativeMsgError> {
+        if origins.is_empty() {
+            return Err(NativeMsgError::InvalidManifest(
+                "allowed_origins whitelist cannot be empty".to_string(),
+            ));
+        }
+        let mut normalized = Vec::with_capacity(origins.len());
+        for orig in origins {
+            let norm = Self::normalize_origin(&orig).ok_or_else(|| {
+                NativeMsgError::InvalidManifest(format!("Invalid extension origin: {}", orig))
+            })?;
+            if !normalized.contains(&norm) {
+                normalized.push(norm);
+            }
+        }
+        let mut guard = self.allowed_origins.write().unwrap();
+        *guard = normalized;
+        self.caller_authorized.store(false, Ordering::SeqCst);
+        Ok(())
+    }
+
+    /// Enables or disables mandatory session-level or per-message caller origin verification.
+    pub fn set_require_caller_auth(&self, require: bool) {
+        self.require_caller_auth.store(require, Ordering::SeqCst);
+    }
+
+    /// Checks whether a candidate extension ID or `chrome-extension://<id>/` origin is in the whitelist.
+    pub fn is_origin_whitelisted(&self, origin_or_id: &str) -> bool {
+        let norm = match Self::normalize_origin(origin_or_id) {
+            Some(n) => n,
+            None => return false,
+        };
+        let guard = self.allowed_origins.read().unwrap();
+        guard.iter().any(|allowed| allowed == &norm)
+    }
+
+    /// Verifies the calling extension's origin (passed by the browser on the command line or handshake)
+    /// against the `allowed_origins` whitelist.
+    pub fn verify_caller(&self, caller_origin: &str) -> Result<(), NativeMsgError> {
+        self.require_caller_auth.store(true, Ordering::SeqCst);
+        if self.is_origin_whitelisted(caller_origin) {
+            self.caller_authorized.store(true, Ordering::SeqCst);
+            Ok(())
+        } else {
+            self.caller_authorized.store(false, Ordering::SeqCst);
+            Err(NativeMsgError::UnauthorizedCaller(
+                caller_origin.to_string(),
+            ))
+        }
+    }
+
+    /// Generates a validated `NativeMessagingManifest` (`allowed_origins`) for this host.
+    pub fn generate_manifest(
+        &self,
+        host_exe_path: &str,
+    ) -> Result<NativeMessagingManifest, NativeMsgError> {
+        NativeMessagingManifest::new(host_exe_path, self.allowed_origins())
     }
 
     /// Update vault instance and unlock host.
@@ -198,6 +369,11 @@ impl NativeMessagingHost {
     }
 
     /// Process a raw JSON string query and generate JSON response string.
+    ///
+    /// Enforces caller verification:
+    /// - Any `"origin"` or `"extension_id"` field in the payload must match `allowed_origins`.
+    /// - When strict caller authentication is active (`with_allowed_origins`, `set_require_caller_auth(true)`,
+    ///   or after `verify_caller`), unverified callers without a valid whitelisted origin are rejected.
     pub fn handle_json_message(&self, message_str: &str) -> String {
         let parsed: Result<serde_json::Value, _> = serde_json::from_str(message_str);
         let val = match parsed {
@@ -210,6 +386,29 @@ impl NativeMessagingHost {
                 .to_string();
             }
         };
+
+        let msg_origin = val
+            .get("origin")
+            .or_else(|| val.get("extension_id"))
+            .and_then(|v| v.as_str());
+
+        if let Some(candidate_origin) = msg_origin {
+            if !self.is_origin_whitelisted(candidate_origin) {
+                return serde_json::json!({
+                    "status": "error",
+                    "message": format!("Unauthorized caller origin: {}", candidate_origin)
+                })
+                .to_string();
+            }
+        } else if self.require_caller_auth.load(Ordering::SeqCst)
+            && !self.caller_authorized.load(Ordering::SeqCst)
+        {
+            return serde_json::json!({
+                "status": "error",
+                "message": "Unauthorized caller: extension origin not verified"
+            })
+            .to_string();
+        }
 
         let msg_type = val.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
@@ -273,6 +472,17 @@ impl NativeMessagingHost {
         serde_json::to_string(&resp).unwrap_or_else(|_| {
             serde_json::json!({ "status": "error", "message": "Serialization failure" }).to_string()
         })
+    }
+
+    /// Run stdio messaging loop after verifying `caller_origin` against the `allowed_origins` whitelist.
+    pub fn run_stdio_loop_for_caller<R: Read, W: Write>(
+        &self,
+        caller_origin: &str,
+        reader: R,
+        writer: W,
+    ) -> Result<(), NativeMsgError> {
+        self.verify_caller(caller_origin)?;
+        self.run_stdio_loop(reader, writer)
     }
 
     /// Run stdio messaging loop until EOF or IO error.

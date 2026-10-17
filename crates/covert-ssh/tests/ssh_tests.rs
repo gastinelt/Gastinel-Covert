@@ -39,11 +39,34 @@ fn test_agent_unlocked_with_vault_keys_and_signing() {
         None,
         Some("deploy@prod".to_string()),
     ));
+    let valid_rsa_pem = {
+        use rsa::pkcs1::{EncodeRsaPrivateKey, LineEnding};
+        use rsa::{BigUint, RsaPrivateKey};
+        let p = BigUint::parse_bytes(
+            b"f75e80839b9b9379f1cf1128f321639757dba514642c206bbbd99f9a4846208b\
+              3e93fbbe5e0527cc59b1d4b929d9555853004c7c8b30ee6a213c3d1bb7415d03",
+            16,
+        )
+        .unwrap();
+        let q = BigUint::parse_bytes(
+            b"b892d9ebdbfc37e397256dd8a5d3123534d1f03726284743ddc6be3a709edb69\
+              6fc40c7d902ed804c6eee730eee3d5b20bf6bd8d87a296813c87d3b3cc9d7947",
+            16,
+        )
+        .unwrap();
+        let e = BigUint::from(65537u32);
+        let priv_key = RsaPrivateKey::from_p_q(p, q, e).expect("valid RSA test primes");
+        priv_key
+            .to_pkcs1_pem(LineEnding::LF)
+            .expect("encode PKCS#1 PEM")
+            .to_string()
+    };
+
     vault.add_item(VaultItem::new_ssh(
         "Legacy RSA Key",
-        "rsa-4096",
+        "rsa-1024",
         "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDLRSAExampleLegacyKey",
-        "mock_rsa_private_key_pem",
+        valid_rsa_pem,
         None,
         Some("admin@bastion".to_string()),
     ));
@@ -150,6 +173,80 @@ fn test_unknown_key_sign_request_strictly_rejected() {
     let resp_sign = agent.process_request(&req_sign);
     let (code, _) = WireStream::decode_frame(&resp_sign).expect("decode response");
     assert_eq!(code, SSH_AGENT_FAILURE, "Unrecognized key blob must be rejected even with single loaded key");
+}
+
+#[test]
+fn test_unparseable_and_unsupported_ssh_keys_return_real_error() {
+    use covert_core::models::SshKeyData;
+    use covert_ssh::error::SshAgentError;
+    use covert_ssh::keys::SshKeyEntry;
+
+    // 1. Unparseable Ed25519 key -> must return Err(SshAgentError::KeyError), never a fake SHA256 signature
+    let bad_ed25519 = SshKeyEntry::from_ssh_data(
+        &SshKeyData {
+            key_type: "ed25519".to_string(),
+            public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBadEd25519Key".to_string(),
+            private_key: "not-a-valid-ed25519-private-key".to_string(),
+            passphrase: None,
+            comment: Some("bad-ed25519".to_string()),
+        },
+        "Bad Ed25519",
+    );
+    assert!(matches!(
+        bad_ed25519.sign(b"challenge", 0),
+        Err(SshAgentError::KeyError(_))
+    ));
+
+    // 2. Unparseable RSA key -> must return Err(SshAgentError::KeyError)
+    let bad_rsa = SshKeyEntry::from_ssh_data(
+        &SshKeyData {
+            key_type: "rsa-4096".to_string(),
+            public_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDBadRsaKey".to_string(),
+            private_key: "mock_rsa_private_key_pem".to_string(),
+            passphrase: None,
+            comment: Some("bad-rsa".to_string()),
+        },
+        "Bad RSA",
+    );
+    assert!(matches!(
+        bad_rsa.sign(b"challenge", SSH_AGENT_RSA_SHA2_256),
+        Err(SshAgentError::KeyError(_))
+    ));
+
+    // 3. Unsupported SSH key type -> must return Err(SshAgentError::KeyError)
+    let unsupported_key = SshKeyEntry::from_ssh_data(
+        &SshKeyData {
+            key_type: "ssh-dss".to_string(),
+            public_key: "ssh-dss AAAAB3NzaC1kc3MAAACB".to_string(),
+            private_key: "0123456789abcdef".to_string(),
+            passphrase: None,
+            comment: Some("unsupported-dsa".to_string()),
+        },
+        "Unsupported DSA",
+    );
+    assert!(matches!(
+        unsupported_key.sign(b"challenge", 0),
+        Err(SshAgentError::KeyError(_))
+    ));
+
+    // 4. Through SshAgent wire protocol: signing with an unparseable key returns SSH_AGENT_FAILURE
+    let agent = SshAgent::new();
+    agent.set_unlocked(true);
+    let bad_blob = bad_rsa.public_key_blob.clone();
+    agent.add_key(bad_rsa);
+
+    let mut sign_payload = Vec::new();
+    WireStream::write_string(&mut sign_payload, &bad_blob);
+    WireStream::write_string(&mut sign_payload, b"challenge");
+    WireStream::write_u32(&mut sign_payload, SSH_AGENT_RSA_SHA2_256);
+
+    let req_sign = WireStream::encode_frame(SSH_AGENTC_SIGN_REQUEST, &sign_payload);
+    let resp_sign = agent.process_request(&req_sign);
+    let (code, _) = WireStream::decode_frame(&resp_sign).expect("decode response");
+    assert_eq!(
+        code, SSH_AGENT_FAILURE,
+        "SshAgent must return SSH_AGENT_FAILURE when private key cannot be parsed"
+    );
 }
 
 #[cfg(windows)]

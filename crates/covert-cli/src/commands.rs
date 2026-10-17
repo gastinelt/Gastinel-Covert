@@ -815,6 +815,23 @@ pub fn execute_daemon(args: DaemonArgs) -> Result<(), Box<dyn std::error::Error>
     // Native Messaging Host setup (if enabled)
     let native_host = if args.native_msg {
         let host = Arc::new(NativeMessagingHost::new());
+        host.set_require_caller_auth(true);
+        if let Ok(origins_str) = std::env::var("COVERT_ALLOWED_ORIGINS") {
+            let origins: Vec<String> = origins_str
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            if !origins.is_empty() {
+                host.set_allowed_origins(origins)?;
+            }
+        }
+        if let Ok(caller_origin) = std::env::var("COVERT_EXTENSION_ORIGIN") {
+            let trimmed = caller_origin.trim();
+            if !trimmed.is_empty() {
+                host.verify_caller(trimmed)?;
+            }
+        }
         if let Some(ref v) = maybe_vault {
             host.set_vault(v.clone());
         }

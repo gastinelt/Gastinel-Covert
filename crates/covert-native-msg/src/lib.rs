@@ -10,5 +10,7 @@ pub mod host;
 
 pub use error::NativeMsgError;
 pub use host::{
-    MatchEntry, NativeMessagingHost, QueryMessage, QueryResponse, MAX_MESSAGE_SIZE,
+    MatchEntry, NativeMessagingHost, NativeMessagingManifest, QueryMessage, QueryResponse,
+    DEFAULT_ALLOWED_ORIGIN, DEFAULT_EXTENSION_ID, DEFAULT_MANIFEST_NAME, MAX_MESSAGE_SIZE,
 };
+
