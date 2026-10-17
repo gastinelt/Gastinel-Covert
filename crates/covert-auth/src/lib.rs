@@ -142,6 +142,10 @@ impl AuthManager {
         current_time: u64,
         tick: Option<u64>,
     ) -> Result<(Vault, Header), AuthError> {
+        // 0. Detect deletion or corruption of .lock file after persistence or when .bin exists
+        self.lockout_manager
+            .verify_lock_file_integrity(current_time, tick);
+
         // 1. Lockout check (with monotonic tick evaluation if provided)
         let is_locked = match tick {
             Some(t) => self.lockout_manager.check_status_monotonic(current_time, t)?,
@@ -158,7 +162,14 @@ impl AuthManager {
 
         // 2. Decrypt vault
         match Vault::decrypt(raw_vault, password) {
-            Ok((vault, header)) => Ok((vault, header)),
+            Ok((vault, header)) => {
+                if vault.security.totp_secret.is_none() {
+                    self.lockout_manager
+                        .register_success_at_time_and_tick(current_time, tick);
+                    let _ = self.lockout_manager.save();
+                }
+                Ok((vault, header))
+            }
             Err(_) => {
                 let _ = self
                     .lockout_manager
@@ -187,6 +198,9 @@ impl AuthManager {
         current_time: u64,
         tick: Option<u64>,
     ) -> Result<(), AuthError> {
+        self.lockout_manager
+            .verify_lock_file_integrity(current_time, tick);
+
         let is_locked = match tick {
             Some(t) => self.lockout_manager.check_status_monotonic(current_time, t)?,
             None => self.lockout_manager.check_status(current_time)?,
@@ -275,6 +289,9 @@ impl AuthManager {
         current_time: u64,
         tick: Option<u64>,
     ) -> Result<(), AuthError> {
+        self.lockout_manager
+            .verify_lock_file_integrity(current_time, tick);
+
         let is_locked = match tick {
             Some(t) => self.lockout_manager.check_status_monotonic(current_time, t)?,
             None => self.lockout_manager.check_status(current_time)?,

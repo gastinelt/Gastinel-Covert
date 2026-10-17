@@ -132,3 +132,73 @@ fn test_auth_manager_brute_force_lockout_activation() {
 
     let _ = fs::remove_file(temp_lock);
 }
+
+#[test]
+fn test_auth_manager_lock_deletion_bypass_blocked() {
+    let master_pw = SecretString::new("CorrectMasterPass123!".to_string());
+    let view_pw = SecretString::new("CorrectViewPass123!".to_string());
+    let bad_pw = SecretString::new("BadPassword123!".to_string());
+    let (vault, raw_vault) = create_test_vault(&master_pw, &view_pw, "JBSWY3DPEHPK3PXP");
+
+    let temp_dir = std::env::temp_dir().join(format!(
+        "gastinel_auth_lock_del_{}",
+        std::process::id()
+    ));
+    let _ = fs::create_dir_all(&temp_dir);
+    let vault_path = temp_dir.join("dx12_pipeline.bin");
+    let lock_path = temp_dir.join("dx12_pipeline.lock");
+
+    // Save vault via VaultStorage so both .bin and .lock exist on disk
+    let storage = covert_storage::VaultStorage::from_path(&vault_path);
+    let fast_params = Argon2Params::new(65536, 2, 1).unwrap();
+    storage
+        .save_vault(&vault, &master_pw, Some(fast_params))
+        .expect("save_vault");
+    assert!(vault_path.exists());
+    assert!(lock_path.exists());
+
+    // 1. Session 1: 1 failed attempt -> failed_attempts == 1 on disk
+    {
+        let mut auth1 = AuthManager::with_lockout_path(&lock_path);
+        let res = auth1.verify_master_password(&raw_vault, &bad_pw);
+        assert!(matches!(res, Err(AuthError::InvalidMasterPassword)));
+        assert_eq!(auth1.lockout_manager().record().failed_attempts, 1);
+
+        // Attacker deletes .lock while Session 1 is still open and tries again
+        fs::remove_file(&lock_path).expect("Delete .lock mid-session");
+        let res_after_del = auth1.verify_master_password(&raw_vault, &master_pw);
+        assert!(
+            matches!(res_after_del, Err(AuthError::LockoutActive(_))),
+            "Deleting .lock mid-session must immediately lock out even with correct password"
+        );
+        assert!(lock_path.exists(), ".lock must be recreated on disk");
+    }
+
+    // 2. Session 2: Attacker deletes .lock again and restarts a brand new AuthManager process
+    fs::remove_file(&lock_path).expect("Delete .lock before restart");
+    assert!(!lock_path.exists());
+    {
+        let mut auth2 = AuthManager::with_lockout_path(&lock_path);
+        assert!(
+            lock_path.exists(),
+            "AuthManager startup must recreate missing .lock in fail-closed state"
+        );
+        let res_restart = auth2.verify_master_password(&raw_vault, &master_pw);
+        match res_restart {
+            Err(AuthError::LockoutActive(rem)) => {
+                assert!(
+                    rem.as_secs() > 3500,
+                    "Expected ~1h lockout after .lock deletion, got {}s",
+                    rem.as_secs()
+                );
+            }
+            other => panic!(
+                "Expected LockoutActive after deleting .lock and restarting, got: {:?}",
+                other
+            ),
+        }
+    }
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+

@@ -8,6 +8,7 @@
 
 use crate::error::LockoutError;
 use serde::{Deserialize, Serialize};
+use std::cell::Cell;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
@@ -55,6 +56,9 @@ pub enum LockoutStatus {
 pub struct LockoutManager {
     record: LockoutRecord,
     lockout_path: PathBuf,
+    /// Tracks whether the lockout file has been persisted on disk in this or a prior session,
+    /// allowing deletion of `.lock` to be caught immediately as a tamper event.
+    persisted_on_disk: Cell<bool>,
 }
 
 impl Default for LockoutManager {
@@ -64,19 +68,29 @@ impl Default for LockoutManager {
 }
 
 impl LockoutManager {
-    /// Creates a new `LockoutManager` with the default camouflaged path:
+    /// Creates a new in-memory `LockoutManager` with the default camouflaged path:
     /// `%LOCALAPPDATA%\DirectX\ShaderCache\dx12_pipeline.lock`.
-    /// Loads any existing record from disk if present.
+    /// Loads any existing record from disk if present without touching disk on construction.
     pub fn new() -> Self {
         let path = match covert_storage::default_camouflaged_path() {
             Ok(vault_path) => covert_storage::derive_lock_path(&vault_path),
             Err(_) => PathBuf::from("dx12_pipeline.lock"),
         };
-        Self::load_or_default(&path)
+        if path.exists() {
+            if let Ok(loaded) = Self::load_from_file(&path) {
+                return loaded;
+            }
+        }
+        Self {
+            record: LockoutRecord::default(),
+            lockout_path: path,
+            persisted_on_disk: Cell::new(false),
+        }
     }
 
-    /// Creates a `LockoutManager` with a custom file path (e.g. for sandboxed unit tests).
-    /// Loads any existing record from disk if present.
+    /// Creates a `LockoutManager` with a specific file path.
+    /// Loads any existing record from disk if present, or fails closed if the companion
+    /// vault (`.bin` / `.bin.bak`) exists on disk while `.lock` was deleted.
     pub fn with_path<P: Into<PathBuf>>(path: P) -> Self {
         let p = path.into();
         Self::load_or_default(&p)
@@ -91,14 +105,18 @@ impl LockoutManager {
         Self {
             record,
             lockout_path: path,
+            persisted_on_disk: Cell::new(false),
         }
     }
 
     /// Creates a `LockoutManager` from an existing record and a custom path.
     pub fn from_record_and_path<P: Into<PathBuf>>(record: LockoutRecord, path: P) -> Self {
+        let p = path.into();
+        let exists = p.exists();
         Self {
             record,
-            lockout_path: path.into(),
+            lockout_path: p,
+            persisted_on_disk: Cell::new(exists),
         }
     }
 
@@ -114,7 +132,59 @@ impl LockoutManager {
 
     /// Sets the lockout file path.
     pub fn set_lockout_path<P: Into<PathBuf>>(&mut self, path: P) {
-        self.lockout_path = path.into();
+        let p = path.into();
+        let exists = p.exists();
+        self.lockout_path = p;
+        self.persisted_on_disk.set(exists);
+    }
+
+    /// Returns `true` if the companion primary vault (`.bin`) or backup vault (`.bin.bak`)
+    /// exists on disk alongside `lock_path`.
+    pub fn companion_vault_exists(lock_path: &Path) -> bool {
+        let primary = lock_path.with_extension("bin");
+        let backup = covert_storage::derive_backup_path(&primary);
+        primary.exists() || backup.exists()
+    }
+
+    /// Enforces a fail-closed safety lockout (at least 1 hour, preserving any higher backoff tier)
+    /// and immediately writes the lockout record to `self.lockout_path`.
+    fn enforce_fail_closed(&mut self, current_utc: u64, tick: Option<u64>) {
+        let next_lockouts = self.record.consecutive_lockouts.max(1);
+        let shift = next_lockouts.saturating_sub(1).min(MAX_BACKOFF_SHIFT);
+        let duration = BASE_LOCKOUT_SECONDS * (1u64 << shift);
+        let effective_utc = current_utc.max(self.record.last_event_utc);
+        self.record = LockoutRecord {
+            failed_attempts: MAX_FAILED_ATTEMPTS,
+            consecutive_lockouts: next_lockouts,
+            locked_until_utc: effective_utc.saturating_add(duration),
+            last_event_utc: effective_utc,
+            last_boot_tick: tick.unwrap_or_else(get_system_tick_count),
+        };
+        self.persisted_on_disk.set(true);
+        let _ = self.save_to_file(&self.lockout_path);
+    }
+
+    /// Verifies that the `.lock` file on disk has not been deleted or corrupted after persistence
+    /// or while its companion `.bin` / `.bin.bak` exists.
+    ///
+    /// If tamper/deletion is detected, immediately triggers a fail-closed safety lockout at
+    /// `current_utc` and returns `true`.
+    pub fn verify_lock_file_integrity(&mut self, current_utc: u64, tick: Option<u64>) -> bool {
+        if self.lockout_path.exists() {
+            if Self::load_from_file(&self.lockout_path).is_err() {
+                self.enforce_fail_closed(current_utc, tick);
+                return true;
+            }
+            self.persisted_on_disk.set(true);
+            return false;
+        }
+
+        if self.persisted_on_disk.get() || Self::companion_vault_exists(&self.lockout_path) {
+            self.enforce_fail_closed(current_utc, tick);
+            return true;
+        }
+
+        false
     }
 
     /// Checks if authentication is currently locked out at `current_utc`.
@@ -237,6 +307,17 @@ impl LockoutManager {
             return Err(LockoutError::ClockRollbackDetected);
         }
 
+        if self.verify_lock_file_integrity(current_utc, tick) {
+            let duration = self
+                .record
+                .locked_until_utc
+                .saturating_sub(self.record.last_event_utc);
+            return Ok(LockoutStatus::LockedOut {
+                duration_seconds: duration,
+                locked_until_utc: self.record.locked_until_utc,
+            });
+        }
+
         self.record.last_event_utc = current_utc;
         self.record.last_boot_tick = tick.unwrap_or_else(get_system_tick_count);
         self.record.failed_attempts += 1;
@@ -287,6 +368,9 @@ impl LockoutManager {
             .map_err(|e| LockoutError::Io(e.to_string()))?;
         covert_storage::write_atomic_no_backup(path, &buffer)
             .map_err(|e| LockoutError::Io(e.to_string()))?;
+        if path == self.lockout_path {
+            self.persisted_on_disk.set(true);
+        }
         Ok(())
     }
 
@@ -298,6 +382,7 @@ impl LockoutManager {
         Ok(Self {
             record,
             lockout_path: path.to_path_buf(),
+            persisted_on_disk: Cell::new(true),
         })
     }
 
@@ -310,43 +395,54 @@ impl LockoutManager {
     pub fn load(&mut self) -> Result<(), LockoutError> {
         let loaded = Self::load_from_file(&self.lockout_path)?;
         self.record = loaded.record;
+        self.persisted_on_disk.set(true);
         Ok(())
     }
 
     /// Loads state from `path` if it exists, otherwise creates a new manager with `path`.
     ///
-    /// Fail-Closed Resilience: If the file exists but cannot be deserialized (e.g. truncated,
-    /// corrupted, or zeroed out), a safety lockout is enforced rather than resetting counters to 0.
-    /// This prevents attackers from bypassing active lockouts by corrupting the lock file.
+    /// Fail-Closed Resilience:
+    /// - If the file exists but cannot be deserialized (e.g. truncated, corrupted, or zeroed out),
+    ///   a 1-hour safety lockout is enforced rather than resetting counters to 0.
+    /// - If the `.lock` file does NOT exist on disk, but the companion vault (`.bin` or `.bin.bak`)
+    ///   DOES exist on disk, the `.lock` file was deleted after vault creation — a 1-hour safety
+    ///   lockout is immediately enforced and persisted to disk.
     pub fn load_or_default(path: &Path) -> Self {
         if path.exists() {
             match Self::load_from_file(path) {
                 Ok(loaded) => return loaded,
-                Err(_) => {
-                    // Fail closed: enforce mandatory safety lockout to prevent bypass attacks.
-                    let now_utc = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs();
-                    let manager = Self {
-                        record: LockoutRecord {
-                            failed_attempts: MAX_FAILED_ATTEMPTS,
-                            consecutive_lockouts: 1,
-                            locked_until_utc: now_utc.saturating_add(BASE_LOCKOUT_SECONDS),
-                            last_event_utc: now_utc,
-                            last_boot_tick: get_system_tick_count(),
-                        },
-                        lockout_path: path.to_path_buf(),
-                    };
-                    let _ = manager.save();
-                    return manager;
-                }
+                Err(_) => return Self::new_fail_closed(path),
             }
+        }
+        if Self::companion_vault_exists(path) {
+            return Self::new_fail_closed(path);
         }
         Self {
             record: LockoutRecord::default(),
             lockout_path: path.to_path_buf(),
+            persisted_on_disk: Cell::new(false),
         }
+    }
+
+    /// Constructs and persists a fail-closed 1-hour safety lockout at `path`.
+    fn new_fail_closed(path: &Path) -> Self {
+        let now_utc = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let manager = Self {
+            record: LockoutRecord {
+                failed_attempts: MAX_FAILED_ATTEMPTS,
+                consecutive_lockouts: 1,
+                locked_until_utc: now_utc.saturating_add(BASE_LOCKOUT_SECONDS),
+                last_event_utc: now_utc,
+                last_boot_tick: get_system_tick_count(),
+            },
+            lockout_path: path.to_path_buf(),
+            persisted_on_disk: Cell::new(true),
+        };
+        let _ = manager.save();
+        manager
     }
 }
 

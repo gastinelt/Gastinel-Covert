@@ -152,6 +152,7 @@ impl VaultStorage {
     }
 
     /// Encrypts the provided `Vault` using `covert-core` and writes it atomically to disk.
+    /// Also initializes the companion `.lock` file if it does not yet exist on disk.
     pub fn save_vault(
         &self,
         vault: &Vault,
@@ -160,6 +161,7 @@ impl VaultStorage {
     ) -> Result<()> {
         let encrypted_bytes = vault.encrypt(master_password, params)?;
         self.save_atomic(&encrypted_bytes)?;
+        self.ensure_lock_file_initialized()?;
         Ok(())
     }
 
@@ -179,6 +181,28 @@ impl VaultStorage {
         }
         let encrypted_bytes = vault.change_master_password(old_password, new_password, params)?;
         self.save_atomic_rotated(&encrypted_bytes)?;
+        self.ensure_lock_file_initialized()?;
+        Ok(())
+    }
+
+    /// Ensures the companion `.lock` file exists alongside the vault so that deleting `.lock`
+    /// while `.bin` or `.bin.bak` is present can be reliably detected as tamper/bypass.
+    fn ensure_lock_file_initialized(&self) -> Result<()> {
+        // Canonical CBOR encoding of LockoutRecord::default() (5-field map with 0 values).
+        const DEFAULT_LOCKOUT_CBOR: &[u8] = &[
+            0xA5, 0x6F, b'f', b'a', b'i', b'l', b'e', b'd', b'_', b'a', b't', b't', b'e', b'm',
+            b'p', b't', b's', 0x00, 0x74, b'c', b'o', b'n', b's', b'e', b'c', b'u', b't', b'i',
+            b'v', b'e', b'_', b'l', b'o', b'c', b'k', b'o', b'u', b't', b's', 0x00, 0x70, b'l',
+            b'o', b'c', b'k', b'e', b'd', b'_', b'u', b'n', b't', b'i', b'l', b'_', b'u', b't',
+            b'c', 0x00, 0x6E, b'l', b'a', b's', b't', b'_', b'e', b'v', b'e', b'n', b't', b'_',
+            b'u', b't', b'c', 0x00, 0x6E, b'l', b'a', b's', b't', b'_', b'b', b'o', b'o', b't',
+            b'_', b't', b'i', b'c', b'k', 0x00,
+        ];
+
+        let lock_p = self.lock_path();
+        if !lock_p.exists() {
+            write_atomic_no_backup(&lock_p, DEFAULT_LOCKOUT_CBOR)?;
+        }
         Ok(())
     }
 }
