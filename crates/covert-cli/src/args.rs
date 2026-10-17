@@ -11,6 +11,9 @@
 //!      variable d'environnement. Cette voie est RISQUEE (l'environnement d'un
 //!      processus peut etre lu) et reservee aux pipelines non interactifs :
 //!        - COVERT_PASSWORD         : mot de passe maitre
+//!        - COVERT_NEW_PASSWORD     : nouveau mot de passe maitre (change-master)
+//!        - COVERT_ITEM_SECRET      : secret d'une entree (add / edit)
+//!        - COVERT_EXPORT_PASSWORD  : mot de passe d'export/import separe (export / import)
 //!        - COVERT_TIER2_PASSWORD   : mot de passe tier-2 (devoilement)
 //!        - COVERT_TOTP             : code TOTP a 6 chiffres
 //!        - COVERT_RECOVERY_CODE    : code de recuperation d'urgence
@@ -41,6 +44,27 @@ pub enum Commands {
 
     /// Query and retrieve credentials from the vault
     Get(GetArgs),
+
+    /// Add a new credential or secret item to the vault
+    Add(AddArgs),
+
+    /// Edit an existing credential or secret item in the vault
+    Edit(EditArgs),
+
+    /// Delete an item from the vault
+    Delete(DeleteArgs),
+
+    /// Rotate the vault master password (updates both .bin and .bak atomically)
+    ChangeMaster(ChangeMasterArgs),
+
+    /// Export the vault to an authenticated encrypted file with a separate export password
+    Export(ExportArgs),
+
+    /// Verify integrity and import items from an encrypted export file
+    Import(ImportArgs),
+
+    /// Create a dated encrypted backup copy of the vault in a chosen directory
+    Backup(BackupArgs),
 
     /// Execute direct keystroke injection (Auto-Type) for a credential
     Autotype(AutotypeArgs),
@@ -89,6 +113,149 @@ pub struct GetArgs {
     /// Output results in JSON format
     #[arg(long)]
     pub json: bool,
+
+    /// Custom vault storage path
+    #[arg(long)]
+    pub path: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct AddArgs {
+    /// Item title
+    #[arg(short, long)]
+    pub title: String,
+
+    /// Item category: web, ssh, apikey, note, raw
+    #[arg(short, long, default_value = "web")]
+    pub category: String,
+
+    /// Username (for Web credentials)
+    #[arg(short, long)]
+    pub username: Option<String>,
+
+    /// URL (for Web credentials)
+    #[arg(long)]
+    pub url: Option<String>,
+
+    /// Service name (for ApiKey items)
+    #[arg(long)]
+    pub service: Option<String>,
+
+    /// SSH key type, e.g. ed25519 or rsa (for SSH items)
+    #[arg(long)]
+    pub key_type: Option<String>,
+
+    /// SSH public key string (for SSH items)
+    #[arg(long)]
+    pub public_key: Option<String>,
+
+    /// SSH comment (for SSH items)
+    #[arg(long)]
+    pub comment: Option<String>,
+
+    /// Notes or description
+    #[arg(long)]
+    pub notes: Option<String>,
+
+    /// Optional tags
+    #[arg(long = "tag")]
+    pub tags: Vec<String>,
+
+    /// Custom auto-type sequence template
+    #[arg(long)]
+    pub sequence: Option<String>,
+
+    /// Custom vault storage path
+    #[arg(long)]
+    pub path: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct EditArgs {
+    /// Target item title or hex ID to edit
+    pub query: String,
+
+    /// New item title
+    #[arg(short, long)]
+    pub title: Option<String>,
+
+    /// New username
+    #[arg(short, long)]
+    pub username: Option<String>,
+
+    /// New URL
+    #[arg(long)]
+    pub url: Option<String>,
+
+    /// New notes
+    #[arg(long)]
+    pub notes: Option<String>,
+
+    /// New service name (for ApiKey items)
+    #[arg(long)]
+    pub service: Option<String>,
+
+    /// Replace item tags
+    #[arg(long = "tag")]
+    pub tags: Vec<String>,
+
+    /// New auto-type sequence template
+    #[arg(long)]
+    pub sequence: Option<String>,
+
+    /// Prompt interactively (no echo) or via COVERT_ITEM_SECRET to update the item's secret
+    #[arg(long)]
+    pub rotate_secret: bool,
+
+    /// Custom vault storage path
+    #[arg(long)]
+    pub path: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct DeleteArgs {
+    /// Target item title or hex ID to delete
+    pub query: String,
+
+    /// Custom vault storage path
+    #[arg(long)]
+    pub path: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct ChangeMasterArgs {
+    /// Custom vault storage path
+    #[arg(long)]
+    pub path: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct ExportArgs {
+    /// Destination file path for the encrypted export
+    #[arg(short, long)]
+    pub output: PathBuf,
+
+    /// Custom vault storage path
+    #[arg(long)]
+    pub path: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct ImportArgs {
+    /// Source file path of the encrypted export to import
+    #[arg(short, long)]
+    pub input: PathBuf,
+
+    /// Custom vault storage path
+    #[arg(long)]
+    pub path: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct BackupArgs {
+    /// Destination directory where the dated encrypted backup copy will be written
+    #[arg(short = 'd', long = "output-dir")]
+    pub output_dir: PathBuf,
 
     /// Custom vault storage path
     #[arg(long)]
