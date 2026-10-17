@@ -20,6 +20,7 @@ use windows::Win32::System::DataExchange::GetClipboardSequenceNumber;
 // =========================================================================
 
 #[test]
+#[ignore = "injecte de vraies frappes clavier / manipule la fenetre au premier plan ; lancer volontairement avec: cargo test -- --ignored"]
 fn test_challenge_clipboard_isolation_under_simulation_and_win32() {
     let initial_seq = unsafe { GetClipboardSequenceNumber() };
 

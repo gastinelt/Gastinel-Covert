@@ -46,6 +46,7 @@ fn test_hotkey_constants() {
 }
 
 #[test]
+#[ignore = "injecte de vraies frappes clavier / manipule la fenetre au premier plan ; lancer volontairement avec: cargo test -- --ignored"]
 fn test_hotkey_manager_lifecycle() {
     // Attempt registration with a unique test hotkey ID and unregistration
     // Using VK_F12 (0x7B) with Ctrl+Alt to avoid collision with standard hotkeys

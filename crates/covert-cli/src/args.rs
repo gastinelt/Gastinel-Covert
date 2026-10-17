@@ -1,4 +1,21 @@
 //! Command line argument definitions for covert-cli.
+//!
+//! IMPORTANT (securite) : aucun secret (mot de passe maitre, mot de passe
+//! tier-2, code TOTP, code de recuperation) ne peut etre passe en argument de
+//! ligne de commande. Les arguments sont visibles dans le Gestionnaire des
+//! taches et l'historique du shell ; ils sont donc proscrits.
+//!
+//! Les secrets sont fournis uniquement :
+//!   1. soit en saisie interactive (mot de passe sans echo du terminal) ;
+//!   2. soit, pour l'automatisation (scripts, tests e2e) UNIQUEMENT, via une
+//!      variable d'environnement. Cette voie est RISQUEE (l'environnement d'un
+//!      processus peut etre lu) et reservee aux pipelines non interactifs :
+//!        - COVERT_PASSWORD         : mot de passe maitre
+//!        - COVERT_TIER2_PASSWORD   : mot de passe tier-2 (devoilement)
+//!        - COVERT_TOTP             : code TOTP a 6 chiffres
+//!        - COVERT_RECOVERY_CODE    : code de recuperation d'urgence
+//!      Ordre de priorite : si la variable d'environnement est definie, elle
+//!      est utilisee ; sinon la saisie interactive est demandee.
 
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
@@ -34,10 +51,6 @@ pub enum Commands {
 
 #[derive(Debug, Args)]
 pub struct InitArgs {
-    /// Master password for vault encryption
-    #[arg(short, long)]
-    pub password: Option<String>,
-
     /// Vault human-readable name
     #[arg(short, long, default_value = "Main Vault")]
     pub name: String,
@@ -50,25 +63,14 @@ pub struct InitArgs {
     #[arg(long)]
     pub setup_totp: bool,
 
-    /// Optional Tier-2 Master View Password for unmasking secrets
+    /// Configure an optional Tier-2 Master View Password for unmasking secrets.
+    /// The password is requested interactively (no echo) or via COVERT_TIER2_PASSWORD.
     #[arg(long)]
-    pub tier2_password: Option<String>,
+    pub setup_tier2: bool,
 }
 
 #[derive(Debug, Args)]
 pub struct UnlockArgs {
-    /// Master password
-    #[arg(short, long)]
-    pub password: Option<String>,
-
-    /// 6-digit TOTP code
-    #[arg(short, long)]
-    pub totp: Option<String>,
-
-    /// Emergency recovery code (consumed upon successful verification)
-    #[arg(long)]
-    pub recovery_code: Option<String>,
-
     /// Custom vault storage path
     #[arg(long)]
     pub path: Option<PathBuf>,
@@ -79,21 +81,10 @@ pub struct GetArgs {
     /// Search query matching title, username, url, or ID
     pub query: Option<String>,
 
-    /// Master password
-    #[arg(short, long)]
-    pub password: Option<String>,
-
-    /// 6-digit TOTP code
-    #[arg(short, long)]
-    pub totp: Option<String>,
-
-    /// Emergency recovery code
+    /// Reveal plain-text secrets by supplying the Tier-2 Master View Password.
+    /// The password is requested interactively (no echo) or via COVERT_TIER2_PASSWORD.
     #[arg(long)]
-    pub recovery_code: Option<String>,
-
-    /// Tier-2 Master View Password to unmask plain-text secrets
-    #[arg(long)]
-    pub tier2: Option<String>,
+    pub reveal: bool,
 
     /// Output results in JSON format
     #[arg(long)]
@@ -108,14 +99,6 @@ pub struct GetArgs {
 pub struct AutotypeArgs {
     /// Target credential title or ID to auto-type
     pub query: String,
-
-    /// Master password
-    #[arg(short, long)]
-    pub password: Option<String>,
-
-    /// 6-digit TOTP code
-    #[arg(short, long)]
-    pub totp: Option<String>,
 
     /// Custom auto-type sequence template
     #[arg(short, long)]
@@ -136,13 +119,10 @@ pub struct AutotypeArgs {
 
 #[derive(Debug, Args)]
 pub struct DaemonArgs {
-    /// Master password to pre-unlock vault in RAM for SSH agent / Native messaging
-    #[arg(short, long)]
-    pub password: Option<String>,
-
-    /// 6-digit TOTP code
-    #[arg(short, long)]
-    pub totp: Option<String>,
+    /// Pre-unlock the vault in RAM (master password + 2FA) for SSH agent / Native messaging.
+    /// Credentials are requested interactively (no echo) or via the COVERT_* env vars.
+    #[arg(long)]
+    pub unlock: bool,
 
     /// Custom named pipe path for OpenSSH agent
     #[arg(long)]

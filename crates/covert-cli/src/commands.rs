@@ -26,23 +26,92 @@ fn resolve_storage(path: Option<PathBuf>) -> Result<VaultStorage, Box<dyn std::e
     }
 }
 
-fn get_password(arg_pw: Option<String>, prompt: &str) -> Result<SecretString, Box<dyn std::error::Error>> {
-    if let Some(pw) = arg_pw {
-        Ok(SecretString::from(pw))
-    } else {
-        print!("{}: ", prompt);
-        io::stdout().flush()?;
-        let stdin = io::stdin();
-        let mut line = String::new();
-        stdin.lock().read_line(&mut line)?;
-        let trimmed = line.trim_end_matches(&['\r', '\n'][..]).to_string();
-        Ok(SecretString::from(trimmed))
+// --- Saisie des secrets ---------------------------------------------------
+//
+// Les secrets ne sont JAMAIS lus depuis un argument de ligne de commande.
+// Ordre de priorite systematique :
+//   1. variable d'environnement (voie non-interactive RISQUEE, reservee a
+//      l'automatisation : scripts et tests e2e) ;
+//   2. saisie interactive (sans echo pour les mots de passe).
+
+/// Lit une variable d'environnement et renvoie sa valeur si elle est definie
+/// et non vide.
+fn env_secret(var: &str) -> Option<String> {
+    match std::env::var(var) {
+        Ok(v) if !v.is_empty() => Some(v),
+        _ => None,
     }
+}
+
+/// Recupere un secret « a masquer » (mot de passe maitre, mot de passe tier-2).
+///
+/// Priorite : variable d'environnement `env_var` (automatisation) ; sinon
+/// saisie interactive SANS echo du terminal (via `rpassword`).
+fn get_password(env_var: &str, prompt: &str) -> Result<SecretString, Box<dyn std::error::Error>> {
+    if let Some(v) = env_secret(env_var) {
+        return Ok(SecretString::from(v));
+    }
+    // Lecture sans echo : le mot de passe ne s'affiche pas a l'ecran.
+    let pw = rpassword::prompt_password(format!("{}: ", prompt))?;
+    Ok(SecretString::from(pw))
+}
+
+/// Lit une ligne visible depuis stdin (utilise pour les codes TOTP / de
+/// recuperation, qui ne necessitent pas de masquage de l'echo).
+fn read_visible_line(prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
+    print!("{}: ", prompt);
+    io::stdout().flush()?;
+    let mut line = String::new();
+    io::stdin().lock().read_line(&mut line)?;
+    Ok(line.trim().to_string())
+}
+
+/// Second facteur d'authentification : code TOTP ou code de recuperation.
+enum SecondFactor {
+    Totp(String),
+    Recovery(String),
+}
+
+/// Obtient un second facteur quand le coffre requiert la 2FA.
+///
+/// Priorite : COVERT_RECOVERY_CODE, puis COVERT_TOTP (automatisation) ; sinon
+/// saisie interactive : code TOTP visible, ou code de recuperation si le champ
+/// TOTP est laisse vide.
+fn get_second_factor() -> Result<SecondFactor, Box<dyn std::error::Error>> {
+    if let Some(code) = env_secret("COVERT_RECOVERY_CODE") {
+        return Ok(SecondFactor::Recovery(code));
+    }
+    if let Some(code) = env_secret("COVERT_TOTP") {
+        return Ok(SecondFactor::Totp(code));
+    }
+    // Le code TOTP n'est pas un secret durable : saisie visible (plus ergonomique).
+    let totp = read_visible_line("Enter 6-digit TOTP code (leave blank to use a recovery code)")?;
+    if !totp.is_empty() {
+        return Ok(SecondFactor::Totp(totp));
+    }
+    let recovery = read_visible_line("Enter emergency recovery code")?;
+    if recovery.is_empty() {
+        return Err("Vault requires 2FA: no TOTP code or recovery code provided".into());
+    }
+    Ok(SecondFactor::Recovery(recovery))
+}
+
+/// Obtient un code TOTP uniquement (sous-commande autotype : pas de code de
+/// recuperation accepte). Priorite : COVERT_TOTP ; sinon saisie visible.
+fn get_totp_only() -> Result<String, Box<dyn std::error::Error>> {
+    if let Some(code) = env_secret("COVERT_TOTP") {
+        return Ok(code);
+    }
+    let totp = read_visible_line("Enter 6-digit TOTP code")?;
+    if totp.is_empty() {
+        return Err("Vault requires 2FA: no TOTP code provided (set COVERT_TOTP or type it)".into());
+    }
+    Ok(totp)
 }
 
 pub fn execute_init(args: InitArgs) -> Result<(), Box<dyn std::error::Error>> {
     let storage = resolve_storage(args.path)?;
-    let password = get_password(args.password, "Enter Master Password")?;
+    let password = get_password("COVERT_PASSWORD", "Enter Master Password")?;
 
     let mut vault = Vault::new(args.name);
 
@@ -63,8 +132,8 @@ pub fn execute_init(args: InitArgs) -> Result<(), Box<dyn std::error::Error>> {
         None
     };
 
-    if let Some(t2_pw) = args.tier2_password {
-        let sec_t2 = SecretString::from(t2_pw);
+    if args.setup_tier2 {
+        let sec_t2 = get_password("COVERT_TIER2_PASSWORD", "Enter Tier-2 Master View Password")?;
         vault.security.master_view_password_hash =
             Some(covert_auth::tier2::hash_tier2_password(&sec_t2)?);
     }
@@ -91,7 +160,7 @@ pub fn execute_init(args: InitArgs) -> Result<(), Box<dyn std::error::Error>> {
 
 pub fn execute_unlock(args: UnlockArgs) -> Result<(), Box<dyn std::error::Error>> {
     let storage = resolve_storage(args.path)?;
-    let password = get_password(args.password, "Enter Master Password")?;
+    let password = get_password("COVERT_PASSWORD", "Enter Master Password")?;
 
     let raw_vault = storage.load_raw()?;
     let mut auth_manager = AuthManager::with_lockout_path(storage.lock_path());
@@ -100,15 +169,16 @@ pub fn execute_unlock(args: UnlockArgs) -> Result<(), Box<dyn std::error::Error>
     let now = current_timestamp();
 
     if vault.security.totp_secret.is_some() {
-        if let Some(recovery_code) = args.recovery_code {
-            auth_manager.verify_recovery_code(&mut vault, &recovery_code)?;
-            // Commit consumed recovery code atomically to disk
-            storage.save_vault(&vault, &password, None)?;
-            println!("[INFO] Recovery code consumed and committed.");
-        } else if let Some(totp_code) = args.totp {
-            auth_manager.verify_totp(&vault, &totp_code, now)?;
-        } else {
-            return Err("Vault requires 2FA: specify --totp or --recovery-code".into());
+        match get_second_factor()? {
+            SecondFactor::Recovery(recovery_code) => {
+                auth_manager.verify_recovery_code(&mut vault, &recovery_code)?;
+                // Commit consumed recovery code atomically to disk
+                storage.save_vault(&vault, &password, None)?;
+                println!("[INFO] Recovery code consumed and committed.");
+            }
+            SecondFactor::Totp(totp_code) => {
+                auth_manager.verify_totp(&vault, &totp_code, now)?;
+            }
         }
     }
 
@@ -123,7 +193,7 @@ pub fn execute_unlock(args: UnlockArgs) -> Result<(), Box<dyn std::error::Error>
 
 pub fn execute_get(args: GetArgs) -> Result<(), Box<dyn std::error::Error>> {
     let storage = resolve_storage(args.path)?;
-    let password = get_password(args.password, "Enter Master Password")?;
+    let password = get_password("COVERT_PASSWORD", "Enter Master Password")?;
 
     let raw_vault = storage.load_raw()?;
     let mut auth_manager = AuthManager::with_lockout_path(storage.lock_path());
@@ -132,18 +202,21 @@ pub fn execute_get(args: GetArgs) -> Result<(), Box<dyn std::error::Error>> {
     let now = current_timestamp();
 
     if vault.security.totp_secret.is_some() {
-        if let Some(recovery_code) = args.recovery_code {
-            auth_manager.verify_recovery_code(&mut vault, &recovery_code)?;
-            storage.save_vault(&vault, &password, None)?;
-        } else if let Some(totp_code) = args.totp {
-            auth_manager.verify_totp(&vault, &totp_code, now)?;
-        } else {
-            return Err("Vault requires 2FA: specify --totp or --recovery-code".into());
+        match get_second_factor()? {
+            SecondFactor::Recovery(recovery_code) => {
+                auth_manager.verify_recovery_code(&mut vault, &recovery_code)?;
+                storage.save_vault(&vault, &password, None)?;
+            }
+            SecondFactor::Totp(totp_code) => {
+                auth_manager.verify_totp(&vault, &totp_code, now)?;
+            }
         }
     }
 
-    let is_tier2_revealed = if let Some(tier2_pw) = args.tier2 {
-        let sec_pw = SecretString::from(tier2_pw);
+    // Devoilement tier-2 declenche par --reveal ou par COVERT_TIER2_PASSWORD.
+    let want_reveal = args.reveal || env_secret("COVERT_TIER2_PASSWORD").is_some();
+    let is_tier2_revealed = if want_reveal {
+        let sec_pw = get_password("COVERT_TIER2_PASSWORD", "Enter Tier-2 Master View Password")?;
         if vault.security.master_view_password_hash.is_some() {
             auth_manager.verify_tier2_password(&vault, &sec_pw)?;
             true
@@ -218,7 +291,7 @@ pub fn execute_get(args: GetArgs) -> Result<(), Box<dyn std::error::Error>> {
 
 pub fn execute_autotype(args: AutotypeArgs) -> Result<(), Box<dyn std::error::Error>> {
     let storage = resolve_storage(args.path)?;
-    let password = get_password(args.password, "Enter Master Password")?;
+    let password = get_password("COVERT_PASSWORD", "Enter Master Password")?;
 
     let raw_vault = storage.load_raw()?;
     let mut auth_manager = AuthManager::with_lockout_path(storage.lock_path());
@@ -227,11 +300,8 @@ pub fn execute_autotype(args: AutotypeArgs) -> Result<(), Box<dyn std::error::Er
     let now = current_timestamp();
 
     if vault.security.totp_secret.is_some() {
-        if let Some(totp_code) = args.totp {
-            auth_manager.verify_totp(&vault, &totp_code, now)?;
-        } else {
-            return Err("Vault requires 2FA: specify --totp".into());
-        }
+        let totp_code = get_totp_only()?;
+        auth_manager.verify_totp(&vault, &totp_code, now)?;
     }
 
     let query_lower = args.query.to_lowercase();
@@ -291,18 +361,15 @@ pub fn execute_daemon(args: DaemonArgs) -> Result<(), Box<dyn std::error::Error>
     let storage = resolve_storage(args.path)?;
     let stop_signal = Arc::new(AtomicBool::new(false));
 
-    // Optional pre-unlocked vault in memory
-    let maybe_vault = if let Some(pw_str) = args.password {
-        let password = SecretString::from(pw_str);
+    // Optional pre-unlocked vault in memory (opt-in via --unlock)
+    let maybe_vault = if args.unlock {
+        let password = get_password("COVERT_PASSWORD", "Enter Master Password")?;
         let raw_vault = storage.load_raw()?;
         let mut auth_manager = AuthManager::with_lockout_path(storage.lock_path());
         let (vault, _) = auth_manager.verify_master_password(&raw_vault, &password)?;
         if vault.security.totp_secret.is_some() {
-            if let Some(totp_code) = args.totp {
-                auth_manager.verify_totp(&vault, &totp_code, current_timestamp())?;
-            } else {
-                return Err("2FA required: specify --totp".into());
-            }
+            let totp_code = get_totp_only()?;
+            auth_manager.verify_totp(&vault, &totp_code, current_timestamp())?;
         }
         Some(vault)
     } else {
