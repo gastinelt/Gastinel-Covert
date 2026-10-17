@@ -160,11 +160,9 @@ export component AppWindow inherits Window {
             height: 38px;
             width: 320px;
             border-radius: Theme.radius-md;
-            background: #1A1D20EE;
+            background: Theme.background;
             border-width: 1px;
-            border-color: #333333;
-            drop-shadow-blur: 12px;
-            drop-shadow-color: #00000030;
+            border-color: Theme.text-primary;
 
             HorizontalLayout {
                 padding-left: 14px;
@@ -173,17 +171,11 @@ export component AppWindow inherits Window {
                 spacing: 8px;
 
                 Text {
-                    text: "✓";
-                    font-size: 13px;
-                    color: Theme.accent-emerald;
-                    vertical-alignment: center;
-                }
-                Text {
                     text: root.toast-message;
                     font-family: Theme.font-family;
                     font-size: 12px;
-                    font-weight: 500;
-                    color: #FFFFFF;
+                    font-weight: 600;
+                    color: Theme.text-primary;
                     vertical-alignment: center;
                 }
             }

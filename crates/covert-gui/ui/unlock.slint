@@ -31,9 +31,6 @@ export component UnlockView inherits Rectangle {
                 border-radius: Theme.radius-xl;
                 border-width: 1px;
                 border-color: Theme.border;
-                drop-shadow-blur: 20px;
-                drop-shadow-color: #00000010;
-                drop-shadow-offset-y: 6px;
 
                 VerticalLayout {
                     padding: 36px;
@@ -48,13 +45,16 @@ export component UnlockView inherits Rectangle {
                             width: 64px;
                             height: 64px;
                             border-radius: Theme.radius-lg;
-                            background: root.is-locked-out ? Theme.accent-danger-light : Theme.accent-emerald-light;
+                            background: Theme.background;
                             border-width: 1px;
-                            border-color: root.is-locked-out ? Theme.accent-danger : Theme.accent-emerald-border;
+                            border-color: root.is-locked-out ? Theme.accent-danger : Theme.border;
 
                             Text {
-                                text: root.is-locked-out ? "🔒" : "🛡️";
-                                font-size: 28px;
+                                text: root.is-locked-out ? "ALERTE" : "GC";
+                                font-family: Theme.font-family;
+                                font-size: root.is-locked-out ? 11px : 18px;
+                                font-weight: 700;
+                                color: root.is-locked-out ? Theme.accent-danger : Theme.text-primary;
                                 vertical-alignment: center;
                                 horizontal-alignment: center;
                             }
@@ -187,14 +187,14 @@ export component UnlockView inherits Rectangle {
                                         font-family: Theme.font-family;
                                         font-size: 12px;
                                         font-weight: 600;
-                                        color: Theme.accent-blue;
+                                        color: Theme.text-secondary;
                                     }
                                 }
                             }
 
                             StyledButton {
                                 text: "Déverrouiller le coffre";
-                                kind: "emerald";
+                                kind: "primary";
                                 btn-height: 42px;
                                 font-size: 14px;
                                 enabled: root.totp-code != "";
@@ -230,14 +230,14 @@ export component UnlockView inherits Rectangle {
                                         font-family: Theme.font-family;
                                         font-size: 12px;
                                         font-weight: 600;
-                                        color: Theme.accent-blue;
+                                        color: Theme.text-secondary;
                                     }
                                 }
                             }
 
                             StyledButton {
                                 text: "Consommer le code & Déverrouiller";
-                                kind: "emerald";
+                                kind: "primary";
                                 btn-height: 42px;
                                 font-size: 14px;
                                 enabled: root.recovery-code != "";

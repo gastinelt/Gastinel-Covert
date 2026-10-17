@@ -549,3 +549,71 @@ fn test_gui_clipboard_auto_wipe_after_timeout() {
     assert!(state.active_clipboard.is_none(), "Expired clipboard guard must be wiped and removed");
 }
 
+#[test]
+fn test_gui_gastinel_charter_conformance() {
+    let ui_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ui");
+    let slint_files = [
+        "theme.slint",
+        "app.slint",
+        "onboarding.slint",
+        "unlock.slint",
+        "modal_tier2.slint",
+        "dashboard.slint",
+    ];
+
+    let theme_content = std::fs::read_to_string(ui_dir.join("theme.slint"))
+        .expect("read theme.slint");
+    assert!(theme_content.contains("background: #ffffff;"));
+    assert!(theme_content.contains("text-primary: #111111;"));
+    assert!(theme_content.contains("text-secondary: #6b6b6b;"));
+    assert!(theme_content.contains("border: #d9d9d9;"));
+    assert!(theme_content.contains("font-family: \"Inter\";"));
+    assert!(theme_content.contains("radius-sm: 0px;"));
+    assert!(theme_content.contains("radius-md: 0px;"));
+    assert!(theme_content.contains("radius-lg: 0px;"));
+    assert!(theme_content.contains("radius-xl: 0px;"));
+
+    for file in slint_files {
+        let content = std::fs::read_to_string(ui_dir.join(file))
+            .unwrap_or_else(|_| panic!("Failed to read {}", file));
+        let lower = content.to_lowercase();
+
+        assert!(
+            !lower.contains("consolas") && !lower.contains("monospace"),
+            "{} must not use monospace or Consolas fonts",
+            file
+        );
+        assert!(
+            !lower.contains("accent-emerald")
+                && !lower.contains("accent-blue")
+                && !lower.contains("accent-warning"),
+            "{} must not use decorative color accents",
+            file
+        );
+        assert!(
+            !lower.contains("drop-shadow"),
+            "{} must not use decorative drop-shadows",
+            file
+        );
+        assert!(
+            !lower.contains("border-width: 2px"),
+            "{} must only use 1px borders",
+            file
+        );
+
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix("border-radius:") {
+                let val = rest.trim().trim_end_matches(';').trim();
+                assert!(
+                    val == "0px" || val.starts_with("Theme.radius-"),
+                    "{} has non-zero border-radius: {}",
+                    file,
+                    trimmed
+                );
+            }
+        }
+    }
+}
+
+

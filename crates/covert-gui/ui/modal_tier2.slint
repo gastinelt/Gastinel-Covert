@@ -10,7 +10,7 @@ export component ModalTier2 inherits Rectangle {
     callback cancelled();
 
     visible: root.is-open;
-    background: #00000055;
+    background: #11111180;
 
     // Click outside to cancel if clicked on backdrop
     TouchArea {
@@ -25,9 +25,6 @@ export component ModalTier2 inherits Rectangle {
         background: Theme.background;
         border-width: 1px;
         border-color: Theme.border;
-        drop-shadow-blur: 24px;
-        drop-shadow-color: #00000025;
-        drop-shadow-offset-y: 8px;
 
         // Prevent click inside modal from closing
         TouchArea {}
@@ -107,16 +104,16 @@ export component ModalTier2 inherits Rectangle {
                     Rectangle {
                         height: 34px;
                         border-radius: Theme.radius-sm;
-                        background: root.duration-choice == 0 ? Theme.surface-active : Theme.surface;
+                        background: root.duration-choice == 0 ? Theme.text-primary : Theme.background;
                         border-width: 1px;
-                        border-color: root.duration-choice == 0 ? Theme.border-focus : Theme.border;
+                        border-color: root.duration-choice == 0 ? Theme.text-primary : Theme.border;
 
                         Text {
                             text: "Usage unique";
                             font-family: Theme.font-family;
                             font-size: 11px;
-                            font-weight: 500;
-                            color: Theme.text-primary;
+                            font-weight: 600;
+                            color: root.duration-choice == 0 ? Theme.background : Theme.text-primary;
                             vertical-alignment: center;
                             horizontal-alignment: center;
                         }
@@ -130,16 +127,16 @@ export component ModalTier2 inherits Rectangle {
                     Rectangle {
                         height: 34px;
                         border-radius: Theme.radius-sm;
-                        background: root.duration-choice == 60 ? Theme.surface-active : Theme.surface;
+                        background: root.duration-choice == 60 ? Theme.text-primary : Theme.background;
                         border-width: 1px;
-                        border-color: root.duration-choice == 60 ? Theme.border-focus : Theme.border;
+                        border-color: root.duration-choice == 60 ? Theme.text-primary : Theme.border;
 
                         Text {
                             text: "60 secondes";
                             font-family: Theme.font-family;
                             font-size: 11px;
-                            font-weight: 500;
-                            color: Theme.text-primary;
+                            font-weight: 600;
+                            color: root.duration-choice == 60 ? Theme.background : Theme.text-primary;
                             vertical-alignment: center;
                             horizontal-alignment: center;
                         }
@@ -153,16 +150,16 @@ export component ModalTier2 inherits Rectangle {
                     Rectangle {
                         height: 34px;
                         border-radius: Theme.radius-sm;
-                        background: root.duration-choice == 300 ? Theme.surface-active : Theme.surface;
+                        background: root.duration-choice == 300 ? Theme.text-primary : Theme.background;
                         border-width: 1px;
-                        border-color: root.duration-choice == 300 ? Theme.border-focus : Theme.border;
+                        border-color: root.duration-choice == 300 ? Theme.text-primary : Theme.border;
 
                         Text {
                             text: "5 minutes";
                             font-family: Theme.font-family;
                             font-size: 11px;
-                            font-weight: 500;
-                            color: Theme.text-primary;
+                            font-weight: 600;
+                            color: root.duration-choice == 300 ? Theme.background : Theme.text-primary;
                             vertical-alignment: center;
                             horizontal-alignment: center;
                         }

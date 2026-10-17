@@ -42,13 +42,16 @@ export component OnboardingView inherits Rectangle {
                         width: 56px;
                         height: 56px;
                         border-radius: Theme.radius-md;
-                        background: Theme.accent-emerald-light;
+                        background: Theme.background;
                         border-width: 1px;
-                        border-color: Theme.accent-emerald-border;
+                        border-color: Theme.border;
 
                         Text {
-                            text: "🛡️";
-                            font-size: 24px;
+                            text: "GC";
+                            font-family: Theme.font-family;
+                            font-size: 16px;
+                            font-weight: 700;
+                            color: Theme.text-primary;
                             vertical-alignment: center;
                             horizontal-alignment: center;
                         }
@@ -161,7 +164,7 @@ export component OnboardingView inherits Rectangle {
 
                         StyledButton {
                             text: root.enable-totp ? "2FA Activé (Recommandé)" : "2FA Désactivé";
-                            kind: root.enable-totp ? "emerald" : "secondary";
+                            kind: root.enable-totp ? "primary" : "secondary";
                             btn-height: 28px;
                             font-size: 11px;
                             clicked => { root.enable-totp = !root.enable-totp; }
@@ -197,10 +200,10 @@ export component OnboardingView inherits Rectangle {
                                     }
                                     Text {
                                         text: root.totp-secret != "" ? root.totp-secret : "Génération automatique...";
-                                        font-family: "Consolas, monospace";
+                                        font-family: Theme.font-family;
                                         font-size: 13px;
                                         font-weight: 700;
-                                        color: Theme.accent-blue;
+                                        color: Theme.text-primary;
                                     }
                                 }
 
@@ -269,7 +272,7 @@ export component OnboardingView inherits Rectangle {
                                     spacing: 4px;
                                     for code[i] in root.recovery-codes: Text {
                                         text: (i + 1) + ". " + code;
-                                        font-family: "Consolas, monospace";
+                                        font-family: Theme.font-family;
                                         font-size: 12px;
                                         font-weight: 600;
                                         color: Theme.text-primary;

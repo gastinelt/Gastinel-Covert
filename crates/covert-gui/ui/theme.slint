@@ -1,60 +1,43 @@
 export global Theme {
-    in-out property <color> background: #FFFFFF;
-    in-out property <color> surface: #F8F9FA;
-    in-out property <color> surface-hover: #F1F3F5;
-    in-out property <color> surface-active: #E9ECEF;
-    in-out property <color> border: #E9ECEF;
-    in-out property <color> border-focus: #2563EB;
-    in-out property <color> text-primary: #1A1D20;
-    in-out property <color> text-secondary: #6C757D;
-    in-out property <color> text-muted: #ADB5BD;
-    in-out property <color> accent-emerald: #10B981;
-    in-out property <color> accent-emerald-light: #ECFDF5;
-    in-out property <color> accent-emerald-border: #A7F3D0;
-    in-out property <color> accent-blue: #2563EB;
-    in-out property <color> accent-blue-hover: #1D4ED8;
-    in-out property <color> accent-danger: #EF4444;
-    in-out property <color> accent-danger-light: #FEF2F2;
-    in-out property <color> accent-warning: #F59E0B;
-    in-out property <string> font-family: "Inter, Segoe UI, sans-serif";
-    in-out property <length> radius-sm: 4px;
-    in-out property <length> radius-md: 6px;
-    in-out property <length> radius-lg: 8px;
-    in-out property <length> radius-xl: 12px;
+    in-out property <color> background: #ffffff;
+    in-out property <color> surface: #ffffff;
+    in-out property <color> surface-hover: #ffffff;
+    in-out property <color> surface-active: #ffffff;
+    in-out property <color> border: #d9d9d9;
+    in-out property <color> border-focus: #111111;
+    in-out property <color> text-primary: #111111;
+    in-out property <color> text-secondary: #6b6b6b;
+    in-out property <color> text-muted: #6b6b6b;
+    in-out property <color> accent-danger: #c62828;
+    in-out property <color> accent-danger-light: #ffffff;
+    in-out property <string> font-family: "Inter";
+    in-out property <length> radius-sm: 0px;
+    in-out property <length> radius-md: 0px;
+    in-out property <length> radius-lg: 0px;
+    in-out property <length> radius-xl: 0px;
 }
 
 export component StyledButton inherits Rectangle {
     in-out property <string> text: "Button";
-    in-out property <string> kind: "primary"; // "primary" | "secondary" | "danger" | "emerald" | "ghost"
+    in-out property <string> kind: "primary"; // "primary" | "secondary" | "danger" | "ghost"
     in-out property <bool> enabled: true;
     in-out property <length> btn-height: 38px;
     in-out property <length> font-size: 13px;
     callback clicked();
 
-    border-radius: Theme.radius-md;
+    border-radius: 0px;
     height: root.btn-height;
     clip: true;
 
-    background: !root.enabled ? #E5E7EB :
-        touch.pressed ? (
-            root.kind == "primary" ? Theme.accent-blue-hover :
-            root.kind == "danger" ? #DC2626 :
-            root.kind == "emerald" ? #059669 :
-            root.kind == "secondary" ? Theme.surface-active : #E5E7EB
-        ) : touch.has-hover ? (
-            root.kind == "primary" ? #1D4ED8 :
-            root.kind == "danger" ? #F87171 :
-            root.kind == "emerald" ? #34D399 :
-            root.kind == "secondary" ? Theme.surface-hover : #F3F4F6
-        ) : (
-            root.kind == "primary" ? Theme.accent-blue :
-            root.kind == "danger" ? Theme.accent-danger :
-            root.kind == "emerald" ? Theme.accent-emerald :
-            root.kind == "secondary" ? Theme.surface : Colors.transparent
-        );
+    background: !root.enabled ? Theme.background :
+        (root.kind == "primary" || root.kind == "emerald") ?
+            (touch.has-hover ? Theme.background : Theme.text-primary) :
+            (touch.has-hover ? Theme.text-primary : Theme.background);
 
-    border-width: (root.kind == "secondary") ? 1px : 0px;
-    border-color: Theme.border;
+    border-width: 1px;
+    border-color: !root.enabled ? Theme.border :
+        (root.kind == "primary" || root.kind == "emerald" || root.kind == "danger" || touch.has-hover) ?
+            Theme.text-primary : Theme.border;
 
     HorizontalLayout {
         padding-left: 14px;
@@ -67,9 +50,10 @@ export component StyledButton inherits Rectangle {
             font-family: Theme.font-family;
             font-size: root.font-size;
             font-weight: 500;
-            color: !root.enabled ? #9CA3AF :
-                (root.kind == "primary" || root.kind == "danger" || root.kind == "emerald") ? #FFFFFF :
-                Theme.text-primary;
+            color: !root.enabled ? Theme.text-secondary :
+                (root.kind == "primary" || root.kind == "emerald") ?
+                    (touch.has-hover ? Theme.text-primary : Theme.background) :
+                    (touch.has-hover ? Theme.background : Theme.text-primary);
             vertical-alignment: center;
             horizontal-alignment: center;
         }
@@ -91,7 +75,7 @@ export component StyledInput inherits Rectangle {
     callback edited(string);
     callback accepted();
 
-    border-radius: Theme.radius-md;
+    border-radius: 0px;
     border-width: 1px;
     border-color: root.error-message != "" ? Theme.accent-danger :
                   input.has-focus ? Theme.border-focus : Theme.border;
@@ -139,10 +123,10 @@ export component CategoryBadge inherits Rectangle {
     in-out property <bool> active: false;
     callback clicked();
 
-    border-radius: Theme.radius-sm;
-    background: root.active ? Theme.accent-blue : Theme.surface;
+    border-radius: 0px;
+    background: root.active ? Theme.text-primary : Theme.background;
     border-width: 1px;
-    border-color: root.active ? Theme.accent-blue : Theme.border;
+    border-color: root.active ? Theme.text-primary : Theme.border;
     height: 26px;
 
     HorizontalLayout {
@@ -155,7 +139,7 @@ export component CategoryBadge inherits Rectangle {
             font-family: Theme.font-family;
             font-size: 11px;
             font-weight: 600;
-            color: root.active ? #FFFFFF : Theme.text-secondary;
+            color: root.active ? Theme.background : Theme.text-secondary;
             vertical-alignment: center;
         }
     }

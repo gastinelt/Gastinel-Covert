@@ -90,17 +90,6 @@ export component DashboardView inherits Rectangle {
                         alignment: start;
                         spacing: 10px;
 
-                        // Pastille verte
-                        Rectangle {
-                            width: 12px;
-                            height: 12px;
-                            border-radius: 6px;
-                            background: Theme.accent-emerald;
-                            border-width: 2px;
-                            border-color: Theme.accent-emerald-border;
-                            y: (parent.height - self.height) / 2;
-                        }
-
                         VerticalLayout {
                             alignment: center;
                             spacing: 1px;
@@ -118,7 +107,7 @@ export component DashboardView inherits Rectangle {
                                 font-family: Theme.font-family;
                                 font-size: 11px;
                                 font-weight: 600;
-                                color: Theme.accent-emerald;
+                                color: Theme.text-secondary;
                             }
                         }
                     }
@@ -142,7 +131,9 @@ export component DashboardView inherits Rectangle {
                     Rectangle {
                         height: 34px;
                         border-radius: Theme.radius-sm;
-                        background: root.active-category == "All" ? Theme.surface-active : Colors.transparent;
+                        border-width: 1px;
+                        border-color: root.active-category == "All" ? Theme.text-primary : Theme.border;
+                        background: root.active-category == "All" ? Theme.text-primary : Theme.background;
 
                         HorizontalLayout {
                             padding-left: 10px;
@@ -151,11 +142,11 @@ export component DashboardView inherits Rectangle {
                             alignment: start;
 
                             Text {
-                                text: "📁 Tous les secrets";
+                                text: "Tous les secrets";
                                 font-family: Theme.font-family;
                                 font-size: 12px;
                                 font-weight: root.active-category == "All" ? 700 : 500;
-                                color: root.active-category == "All" ? Theme.accent-blue : Theme.text-primary;
+                                color: root.active-category == "All" ? Theme.background : Theme.text-primary;
                                 vertical-alignment: center;
                             }
                         }
@@ -169,7 +160,9 @@ export component DashboardView inherits Rectangle {
                     Rectangle {
                         height: 34px;
                         border-radius: Theme.radius-sm;
-                        background: root.active-category == "Web" ? Theme.surface-active : Colors.transparent;
+                        border-width: 1px;
+                        border-color: root.active-category == "Web" ? Theme.text-primary : Theme.border;
+                        background: root.active-category == "Web" ? Theme.text-primary : Theme.background;
 
                         HorizontalLayout {
                             padding-left: 10px;
@@ -178,11 +171,11 @@ export component DashboardView inherits Rectangle {
                             alignment: start;
 
                             Text {
-                                text: "🌐 Identifiants Web";
+                                text: "Identifiants Web";
                                 font-family: Theme.font-family;
                                 font-size: 12px;
                                 font-weight: root.active-category == "Web" ? 700 : 500;
-                                color: root.active-category == "Web" ? Theme.accent-blue : Theme.text-primary;
+                                color: root.active-category == "Web" ? Theme.background : Theme.text-primary;
                                 vertical-alignment: center;
                             }
                         }
@@ -196,7 +189,9 @@ export component DashboardView inherits Rectangle {
                     Rectangle {
                         height: 34px;
                         border-radius: Theme.radius-sm;
-                        background: root.active-category == "SSH" ? Theme.surface-active : Colors.transparent;
+                        border-width: 1px;
+                        border-color: root.active-category == "SSH" ? Theme.text-primary : Theme.border;
+                        background: root.active-category == "SSH" ? Theme.text-primary : Theme.background;
 
                         HorizontalLayout {
                             padding-left: 10px;
@@ -205,11 +200,11 @@ export component DashboardView inherits Rectangle {
                             alignment: start;
 
                             Text {
-                                text: "🔑 Clés SSH";
+                                text: "Clés SSH";
                                 font-family: Theme.font-family;
                                 font-size: 12px;
                                 font-weight: root.active-category == "SSH" ? 700 : 500;
-                                color: root.active-category == "SSH" ? Theme.accent-blue : Theme.text-primary;
+                                color: root.active-category == "SSH" ? Theme.background : Theme.text-primary;
                                 vertical-alignment: center;
                             }
                         }
@@ -223,7 +218,9 @@ export component DashboardView inherits Rectangle {
                     Rectangle {
                         height: 34px;
                         border-radius: Theme.radius-sm;
-                        background: root.active-category == "ApiKey" ? Theme.surface-active : Colors.transparent;
+                        border-width: 1px;
+                        border-color: root.active-category == "ApiKey" ? Theme.text-primary : Theme.border;
+                        background: root.active-category == "ApiKey" ? Theme.text-primary : Theme.background;
 
                         HorizontalLayout {
                             padding-left: 10px;
@@ -232,11 +229,11 @@ export component DashboardView inherits Rectangle {
                             alignment: start;
 
                             Text {
-                                text: "⚡ Clés API";
+                                text: "Clés API";
                                 font-family: Theme.font-family;
                                 font-size: 12px;
                                 font-weight: root.active-category == "ApiKey" ? 700 : 500;
-                                color: root.active-category == "ApiKey" ? Theme.accent-blue : Theme.text-primary;
+                                color: root.active-category == "ApiKey" ? Theme.background : Theme.text-primary;
                                 vertical-alignment: center;
                             }
                         }
@@ -250,7 +247,9 @@ export component DashboardView inherits Rectangle {
                     Rectangle {
                         height: 34px;
                         border-radius: Theme.radius-sm;
-                        background: root.active-category == "Note" ? Theme.surface-active : Colors.transparent;
+                        border-width: 1px;
+                        border-color: root.active-category == "Note" ? Theme.text-primary : Theme.border;
+                        background: root.active-category == "Note" ? Theme.text-primary : Theme.background;
 
                         HorizontalLayout {
                             padding-left: 10px;
@@ -259,11 +258,11 @@ export component DashboardView inherits Rectangle {
                             alignment: start;
 
                             Text {
-                                text: "📝 Notes chiffrées";
+                                text: "Notes chiffrées";
                                 font-family: Theme.font-family;
                                 font-size: 12px;
                                 font-weight: root.active-category == "Note" ? 700 : 500;
-                                color: root.active-category == "Note" ? Theme.accent-blue : Theme.text-primary;
+                                color: root.active-category == "Note" ? Theme.background : Theme.text-primary;
                                 vertical-alignment: center;
                             }
                         }
@@ -277,7 +276,9 @@ export component DashboardView inherits Rectangle {
                     Rectangle {
                         height: 34px;
                         border-radius: Theme.radius-sm;
-                        background: root.active-category == "RawSecret" ? Theme.surface-active : Colors.transparent;
+                        border-width: 1px;
+                        border-color: root.active-category == "RawSecret" ? Theme.text-primary : Theme.border;
+                        background: root.active-category == "RawSecret" ? Theme.text-primary : Theme.background;
 
                         HorizontalLayout {
                             padding-left: 10px;
@@ -286,11 +287,11 @@ export component DashboardView inherits Rectangle {
                             alignment: start;
 
                             Text {
-                                text: "🔒 Données brutes";
+                                text: "Données brutes";
                                 font-family: Theme.font-family;
                                 font-size: 12px;
                                 font-weight: root.active-category == "RawSecret" ? 700 : 500;
-                                color: root.active-category == "RawSecret" ? Theme.accent-blue : Theme.text-primary;
+                                color: root.active-category == "RawSecret" ? Theme.background : Theme.text-primary;
                                 vertical-alignment: center;
                             }
                         }
@@ -312,6 +313,8 @@ export component DashboardView inherits Rectangle {
                         height: 28px;
                         border-radius: Theme.radius-sm;
                         background: Theme.surface;
+                        border-width: 1px;
+                        border-color: Theme.border;
 
                         HorizontalLayout {
                             padding-left: 8px;
@@ -327,7 +330,7 @@ export component DashboardView inherits Rectangle {
                             }
                             Text {
                                 text: root.inactivity-time;
-                                font-family: "Consolas, monospace";
+                                font-family: Theme.font-family;
                                 font-size: 11px;
                                 font-weight: 600;
                                 color: Theme.text-secondary;
@@ -374,12 +377,6 @@ export component DashboardView inherits Rectangle {
                         spacing: 6px;
                         alignment: start;
 
-                        Text {
-                            text: "🔍";
-                            font-size: 12px;
-                            vertical-alignment: center;
-                        }
-
                         search-input := TextInput {
                             text: root.search-query;
                             font-family: Theme.font-family;
@@ -421,22 +418,12 @@ export component DashboardView inherits Rectangle {
                         for item[i] in root.items: Rectangle {
                             height: 58px;
                             border-radius: Theme.radius-md;
-                            background: item.id == root.selected-item-id ? Theme.background : Theme.background;
+                            background: Theme.background;
                             border-width: 1px;
                             border-color: item.id == root.selected-item-id ? Theme.border-focus : Theme.border;
 
-                            // Left accent indicator for selected item
-                            if item.id == root.selected-item-id: Rectangle {
-                                width: 4px;
-                                height: parent.height - 8px;
-                                x: 4px;
-                                y: 4px;
-                                border-radius: 2px;
-                                background: Theme.accent-blue;
-                            }
-
                             HorizontalLayout {
-                                padding-left: item.id == root.selected-item-id ? 16px : 12px;
+                                padding-left: 12px;
                                 padding-right: 12px;
                                 alignment: space-between;
 
@@ -506,11 +493,6 @@ export component DashboardView inherits Rectangle {
                 alignment: center;
                 spacing: 8px;
 
-                Text {
-                    text: "🔒";
-                    font-size: 40px;
-                    horizontal-alignment: center;
-                }
                 Text {
                     text: "Sélectionnez un élément";
                     font-family: Theme.font-family;
@@ -745,8 +727,8 @@ export component DashboardView inherits Rectangle {
                             spacing: 8px;
 
                             StyledButton {
-                                text: "⚡ Remplir (Auto-Type)";
-                                kind: "emerald";
+                                text: "Remplir (Auto-Type)";
+                                kind: "primary";
                                 btn-height: 34px;
                                 font-size: 12px;
                                 clicked => { root.autotype-item(root.selected-item.id); }
@@ -807,7 +789,7 @@ export component DashboardView inherits Rectangle {
                                         text: root.selected-item.url;
                                         font-family: Theme.font-family;
                                         font-size: 13px;
-                                        color: Theme.accent-blue;
+                                        color: Theme.text-primary;
                                     }
                                 }
 
@@ -893,10 +875,10 @@ export component DashboardView inherits Rectangle {
                                     }
                                     Text {
                                         text: root.selected-item.is_revealed ? root.selected-item.password_plain : root.selected-item.password_masked;
-                                        font-family: root.selected-item.is_revealed ? "Consolas, monospace" : Theme.font-family;
+                                        font-family: Theme.font-family;
                                         font-size: 14px;
                                         font-weight: 700;
-                                        color: root.selected-item.is_revealed ? Theme.accent-emerald : Theme.text-primary;
+                                        color: Theme.text-primary;
                                     }
                                 }
 
