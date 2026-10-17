@@ -384,3 +384,81 @@ fn test_full_roundtrip_save_and_load_with_covert_core_vault() {
         .expect("load_vault after recovery");
     assert_eq!(recovered_vault.items.len(), 4);
 }
+
+#[test]
+fn test_master_password_rotation_updates_backup_and_invalidates_old_password() {
+    let temp_dir = TempDir::new().expect("TempDir");
+    let vault_file = temp_dir.path().join("dx12_pipeline.bin");
+    let storage = VaultStorage::from_path(&vault_file);
+
+    let old_pw = SecretString::new("CompromisedOldPassword123!".to_string());
+    let new_pw = SecretString::new("RotatedNewPassword456!".to_string());
+    let wrong_pw = SecretString::new("WrongOldPassword999!".to_string());
+    let fast_params = Argon2Params::new(65536, 2, 1).unwrap();
+
+    let mut vault = Vault::new("Rotation Test Vault");
+    vault.add_item(VaultItem::new_credential(
+        "Forgejo",
+        "theo",
+        "InitialSecretPass!",
+        Some("https://git.gastinel.me".to_string()),
+    ));
+
+    // 1. Initial save (.bin encrypted with old_pw)
+    storage
+        .save_vault(&vault, &old_pw, Some(fast_params))
+        .expect("Initial save_vault");
+
+    // 2. Second save so .bak also exists and is encrypted with old_pw
+    vault.add_item(VaultItem::new_note("Second Item", "Before rotation"));
+    storage
+        .save_vault(&vault, &old_pw, Some(fast_params))
+        .expect("Second save_vault");
+    assert!(storage.exists());
+    assert!(storage.backup_exists());
+    assert!(storage.load_vault(&old_pw).is_ok());
+    assert!(storage.load_vault_from_backup(&old_pw).is_ok());
+
+    // 3. Attempting rotation with wrong old password must fail and leave files intact
+    assert!(storage
+        .rotate_master_password(&mut vault, &wrong_pw, &new_pw, Some(fast_params))
+        .is_err());
+    assert!(storage.load_vault(&old_pw).is_ok());
+    assert!(storage.load_vault_from_backup(&old_pw).is_ok());
+
+    // 4. Rotate master password with valid old_pw -> new_pw
+    storage
+        .rotate_master_password(&mut vault, &old_pw, &new_pw, Some(fast_params))
+        .expect("rotate_master_password must succeed");
+
+    assert!(storage.exists());
+    assert!(storage.backup_exists());
+    assert!(!storage.temp_path().exists());
+
+    // 5. Old password MUST NOT decrypt either .bin or .bak
+    assert!(
+        storage.load_vault(&old_pw).is_err(),
+        "Old password must not open primary .bin after rotation"
+    );
+    assert!(
+        storage.load_vault_from_backup(&old_pw).is_err(),
+        "Old password must not open backup .bak after rotation"
+    );
+    let raw_bin = storage.load_raw().expect("load_raw");
+    let raw_bak = storage.load_raw_backup().expect("load_raw_backup");
+    assert!(Vault::decrypt(&raw_bin, &old_pw).is_err());
+    assert!(Vault::decrypt(&raw_bak, &old_pw).is_err());
+
+    // 6. New password MUST decrypt both .bin and .bak with all items intact
+    let (loaded_bin, _) = storage
+        .load_vault(&new_pw)
+        .expect("New password must decrypt primary .bin");
+    let (loaded_bak, _) = storage
+        .load_vault_from_backup(&new_pw)
+        .expect("New password must decrypt backup .bak");
+    assert_eq!(loaded_bin.items.len(), 2);
+    assert_eq!(loaded_bak.items.len(), 2);
+    assert_eq!(loaded_bin.items[0].title, "Forgejo");
+    assert_eq!(loaded_bak.items[1].title, "Second Item");
+}
+

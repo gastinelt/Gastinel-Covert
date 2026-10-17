@@ -197,8 +197,10 @@ fn test_journey_3_emergency_recovery_and_key_rotation() {
         .change_master_password(&old_pw, &new_pw, Some(fast_params))
         .unwrap();
 
-    // Commit updated vault atomically (creates .bak containing prior vault)
-    sandbox.write_vault_atomic(&rotated_encrypted).unwrap();
+    // Commit updated vault atomically and rotate .bak so old password cannot decrypt .bak
+    sandbox
+        .write_vault_atomic_rotated(&rotated_encrypted)
+        .unwrap();
 
     // Verify:
     // 1. Primary vault cannot be decrypted with old password
@@ -210,10 +212,11 @@ fn test_journey_3_emergency_recovery_and_key_rotation() {
     assert_eq!(recovered_vault.security.recovery_codes.len(), 9);
     assert!(!recovered_vault.security.recovery_codes.contains(&recovery_code_to_use.to_string()));
 
-    // 3. Backup vault contains prior vault and decrypts with old password
+    // 3. Backup vault ALSO rejects old password and decrypts with new password
     let backup_bytes = fs::read(sandbox.backup_path()).unwrap();
-    let (backup_vault, _) = Vault::decrypt(&backup_bytes, &old_pw).unwrap();
-    assert_eq!(backup_vault.security.recovery_codes.len(), 10);
+    assert!(Vault::decrypt(&backup_bytes, &old_pw).is_err());
+    let (backup_vault, _) = Vault::decrypt(&backup_bytes, &new_pw).unwrap();
+    assert_eq!(backup_vault.security.recovery_codes.len(), 9);
 }
 
 // =========================================================================

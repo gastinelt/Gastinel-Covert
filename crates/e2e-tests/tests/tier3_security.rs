@@ -87,19 +87,23 @@ fn test_crypto_and_storage_master_password_change_and_backup_rotation() {
         .expect("Write initial");
     assert!(!sandbox.backup_path().exists());
 
-    // 2. Change password and write atomically
+    // 2. Change password and write atomically with backup rotation
     let updated_encrypted = vault
         .change_master_password(&old_pw, &new_pw, Some(fast_params))
         .expect("Change password");
     sandbox
-        .write_vault_atomic(&updated_encrypted)
-        .expect("Write updated");
+        .write_vault_atomic_rotated(&updated_encrypted)
+        .expect("Write updated with rotated backup");
 
-    // 3. Verify backup file exists and decrypts with old password
+    // 3. Verify backup file exists, fails with old password, and decrypts with new password
     assert!(sandbox.backup_path().exists());
     let backup_bytes = fs::read(sandbox.backup_path()).expect("Read backup");
+    assert!(
+        Vault::decrypt(&backup_bytes, &old_pw).is_err(),
+        "Backup must NOT decrypt with old password after rotation"
+    );
     let (backup_vault, _) =
-        Vault::decrypt(&backup_bytes, &old_pw).expect("Backup decrypts with old password");
+        Vault::decrypt(&backup_bytes, &new_pw).expect("Backup decrypts with new password");
     assert_eq!(backup_vault.items.len(), vault.items.len());
 
     // 4. Verify primary file decrypts with new password and fails with old password

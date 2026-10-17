@@ -495,6 +495,36 @@ impl AppState {
         Ok(())
     }
 
+    /// Rotates the master password of the unlocked vault and atomically updates both `.bin` and `.bak`
+    /// so that neither file can be decrypted with `old_password`.
+    pub fn change_master_password(
+        &mut self,
+        old_password: &SecretString,
+        new_password: &SecretString,
+        params: Option<covert_core::header::Argon2Params>,
+    ) -> Result<(), GuiError> {
+        if new_password.expose_secret().len() < 8 {
+            return Err(GuiError::PasswordTooShort);
+        }
+        let current_master = self.master_password.as_ref().ok_or(GuiError::NotUnlocked)?;
+        if current_master.expose_secret() != old_password.expose_secret() {
+            return Err(GuiError::PasswordMismatch);
+        }
+        let vault = self.vault.as_mut().ok_or(GuiError::NotUnlocked)?;
+        if vault.security.master_view_password_hash.is_some()
+            && verify_tier2_password(vault, new_password).is_ok()
+        {
+            return Err(GuiError::Tier2MatchesMaster);
+        }
+
+        self.storage
+            .rotate_master_password(vault, old_password, new_password, params)?;
+        self.master_password = Some(new_password.clone());
+        self.touch_activity();
+
+        Ok(())
+    }
+
     /// Return reference to an item by ID.
     pub fn get_item(&self, item_id: &[u8; 16]) -> Option<&VaultItem> {
         self.vault.as_ref().and_then(|v| v.get_item(item_id))
@@ -653,5 +683,16 @@ mod tests {
         // Correct Tier 2 (60s)
         state.verify_tier2(&tier2_pw, 60).unwrap();
         assert!(state.is_tier2_active());
+
+        // Rotate master password and verify neither .bin nor .bak opens with old password
+        let new_master_pw = SecretString::from("NewMasterPassword456!".to_string());
+        let fast_params = covert_core::header::Argon2Params::new(65536, 2, 1).unwrap();
+        state
+            .change_master_password(&master_pw, &new_master_pw, Some(fast_params))
+            .unwrap();
+        assert!(state.storage.load_vault(&master_pw).is_err());
+        assert!(state.storage.load_vault_from_backup(&master_pw).is_err());
+        assert!(state.storage.load_vault(&new_master_pw).is_ok());
+        assert!(state.storage.load_vault_from_backup(&new_master_pw).is_ok());
     }
 }

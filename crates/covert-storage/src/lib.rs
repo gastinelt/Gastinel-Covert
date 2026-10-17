@@ -14,7 +14,7 @@ use covert_core::header::{Argon2Params, VaultHeader};
 use covert_core::models::Vault;
 use covert_core::SecretString;
 
-pub use atomic::{write_atomic, write_atomic_no_backup};
+pub use atomic::{write_atomic, write_atomic_no_backup, write_atomic_rotate_backup};
 pub use error::{Result, StorageError};
 pub use paths::{
     default_camouflaged_path, derive_backup_path, derive_lock_path, derive_temp_path,
@@ -113,6 +113,13 @@ impl VaultStorage {
         write_atomic(&self.vault_path, data)
     }
 
+    /// Atomically saves raw encrypted bytes to the primary vault file and then
+    /// atomically overwrites `.bak` with `data` so no residual backup encrypted
+    /// with an older master password remains on disk.
+    pub fn save_atomic_rotated(&self, data: &[u8]) -> Result<()> {
+        write_atomic_rotate_backup(&self.vault_path, data)
+    }
+
     /// Restores the primary vault file from the backup copy without modifying or
     /// overwriting the backup file itself.
     pub fn restore_from_backup(&self) -> Result<()> {
@@ -153,6 +160,25 @@ impl VaultStorage {
     ) -> Result<()> {
         let encrypted_bytes = vault.encrypt(master_password, params)?;
         self.save_atomic(&encrypted_bytes)?;
+        Ok(())
+    }
+
+    /// Rotates the master password of the vault and atomically updates both `.bin` and `.bak`
+    /// so that neither file remains decryptable with `old_password`, without ever risking
+    /// vault loss if the operation is interrupted.
+    pub fn rotate_master_password(
+        &self,
+        vault: &mut Vault,
+        old_password: &SecretString,
+        new_password: &SecretString,
+        params: Option<Argon2Params>,
+    ) -> Result<()> {
+        if self.exists() {
+            let existing_raw = self.load_raw()?;
+            let (_verified_vault, _header) = Vault::decrypt(&existing_raw, old_password)?;
+        }
+        let encrypted_bytes = vault.change_master_password(old_password, new_password, params)?;
+        self.save_atomic_rotated(&encrypted_bytes)?;
         Ok(())
     }
 }

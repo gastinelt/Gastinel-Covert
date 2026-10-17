@@ -74,6 +74,34 @@ impl TestSandbox {
         Ok(())
     }
 
+    /// Execute atomic master-password rotation write sequence on the sandbox vault file:
+    /// 1. Atomically update primary `.bin` (keeping prior vault in `.bak` during transition)
+    /// 2. Verify primary `.bin` on disk matches `data`
+    /// 3. Write `data` to `.tmp`, flush buffers, and atomically replace `.bak` so that
+    ///    the old master password can no longer decrypt `.bak` either.
+    pub fn write_vault_atomic_rotated(&self, data: &[u8]) -> std::io::Result<()> {
+        self.write_vault_atomic(data)?;
+
+        let primary_p = self.vault_path();
+        let written = fs::read(&primary_p)?;
+        if written.as_slice() != data {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Primary vault verification failed before backup rotation",
+            ));
+        }
+
+        let temp_p = self.temp_path();
+        let backup_p = self.backup_path();
+        let mut f = File::create(&temp_p)?;
+        f.write_all(data)?;
+        f.sync_all()?;
+        drop(f);
+
+        fs::rename(&temp_p, &backup_p)?;
+        Ok(())
+    }
+
     /// Build a populated standard Vault instance with diverse categories.
     pub fn create_sample_vault() -> Vault {
         let mut vault = Vault::new("Gastinel Personal Vault");
