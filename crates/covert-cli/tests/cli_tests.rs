@@ -246,12 +246,14 @@ fn test_cli_daemon_options_parsing() {
         unlock: false,
         pipe: Some(format!(r"\\.\pipe\test-pipe-{}", std::process::id())),
         native_msg: false,
+        extension_ids: Vec::new(),
         no_sentinel: true,
         path: Some(vault_path.clone()),
     };
 
     assert!(daemon_args.no_sentinel);
     assert!(!daemon_args.unlock);
+    assert!(daemon_args.extension_ids.is_empty());
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
@@ -656,7 +658,20 @@ fn test_cli_export_and_import_integrity_verification() {
     );
     assert!(!restored_vault_path.exists());
 
-    // 4. Import untampered export file succeeds
+    // 3b. Wrong export password on untampered export file -> import MUST be refused
+    std::env::set_var("COVERT_EXPORT_PASSWORD", "WrongExportPassword000!");
+    assert!(
+        execute_import(ImportArgs {
+            input: export_path.clone(),
+            path: Some(restored_vault_path.clone()),
+        })
+        .is_err(),
+        "Wrong export password must be refused by import"
+    );
+    assert!(!restored_vault_path.exists());
+
+    // 4. Import untampered export file with correct export password succeeds
+    std::env::set_var("COVERT_EXPORT_PASSWORD", "SeparateExportPass789!");
     execute_import(ImportArgs {
         input: export_path,
         path: Some(restored_vault_path.clone()),

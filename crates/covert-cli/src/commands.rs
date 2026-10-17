@@ -16,7 +16,7 @@ use covert_ssh::agent::SshAgent;
 use covert_ssh::pipe::run_named_pipe_listener;
 use covert_storage::{write_atomic_no_backup, VaultStorage};
 use rand_core::{OsRng, RngCore};
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -35,7 +35,8 @@ fn resolve_storage(path: Option<PathBuf>) -> Result<VaultStorage, Box<dyn std::e
 // Ordre de priorite systematique :
 //   1. variable d'environnement (voie non-interactive RISQUEE, reservee a
 //      l'automatisation : scripts et tests e2e) ;
-//   2. saisie interactive (sans echo pour les mots de passe).
+//   2. flux stdin redirige/pipe (si stdin n'est pas un terminal interactif) ;
+//   3. saisie interactive (sans echo pour les mots de passe via rpassword).
 
 /// Lit une variable d'environnement et renvoie sa valeur si elle est definie
 /// et non vide.
@@ -48,11 +49,19 @@ fn env_secret(var: &str) -> Option<String> {
 
 /// Recupere un secret « a masquer » (mot de passe maitre, mot de passe tier-2).
 ///
-/// Priorite : variable d'environnement `env_var` (automatisation) ; sinon
-/// saisie interactive SANS echo du terminal (via `rpassword`).
+/// Priorite : variable d'environnement `env_var` (automatisation) ; sinon flux
+/// `stdin` si non-terminal (pipe) ; sinon saisie interactive SANS echo du
+/// terminal (via `rpassword`).
 fn get_password(env_var: &str, prompt: &str) -> Result<SecretString, Box<dyn std::error::Error>> {
     if let Some(v) = env_secret(env_var) {
         return Ok(SecretString::from(v));
+    }
+    if !io::stdin().is_terminal() {
+        let mut line = String::new();
+        io::stdin().lock().read_line(&mut line)?;
+        return Ok(SecretString::from(
+            line.trim_end_matches(&['\r', '\n'][..]).to_string(),
+        ));
     }
     // Lecture sans echo : le mot de passe ne s'affiche pas a l'ecran.
     let pw = rpassword::prompt_password(format!("{}: ", prompt))?;
@@ -60,7 +69,7 @@ fn get_password(env_var: &str, prompt: &str) -> Result<SecretString, Box<dyn std
 }
 
 /// Recupere un nouveau mot de passe avec double saisie interactive de confirmation
-/// (ou via `env_var` en mode automatisation).
+/// (ou via `env_var` / `stdin` pipe en mode automatisation).
 fn get_confirmed_password(
     env_var: &str,
     prompt: &str,
@@ -68,6 +77,20 @@ fn get_confirmed_password(
 ) -> Result<SecretString, Box<dyn std::error::Error>> {
     if let Some(v) = env_secret(env_var) {
         return Ok(SecretString::from(v));
+    }
+    if !io::stdin().is_terminal() {
+        let mut line1 = String::new();
+        io::stdin().lock().read_line(&mut line1)?;
+        let pw1 = line1.trim_end_matches(&['\r', '\n'][..]).to_string();
+        let mut line2 = String::new();
+        let n = io::stdin().lock().read_line(&mut line2)?;
+        if n > 0 {
+            let pw2 = line2.trim_end_matches(&['\r', '\n'][..]).to_string();
+            if !pw2.is_empty() && pw1 != pw2 {
+                return Err("Password confirmation does not match".into());
+            }
+        }
+        return Ok(SecretString::from(pw1));
     }
     let pw1 = rpassword::prompt_password(format!("{}: ", prompt))?;
     let pw2 = rpassword::prompt_password(format!("{}: ", confirm_prompt))?;
@@ -812,19 +835,21 @@ pub fn execute_daemon(args: DaemonArgs) -> Result<(), Box<dyn std::error::Error>
         eprintln!("[Daemon] OpenSSH Agent initialized with vault SSH keys.");
     }
 
-    // Native Messaging Host setup (if enabled)
+    // Native Messaging Host setup (if enabled): default-deny unless --extension-id is provided
     let native_host = if args.native_msg {
-        let host = Arc::new(NativeMessagingHost::new());
-        host.set_require_caller_auth(true);
-        if let Ok(origins_str) = std::env::var("COVERT_ALLOWED_ORIGINS") {
-            let origins: Vec<String> = origins_str
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect();
-            if !origins.is_empty() {
-                host.set_allowed_origins(origins)?;
+        let host = Arc::new(NativeMessagingHost::new_deny_all());
+        let mut origins = args.extension_ids.clone();
+        if origins.is_empty() {
+            if let Ok(origins_str) = std::env::var("COVERT_ALLOWED_ORIGINS") {
+                origins = origins_str
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
             }
+        }
+        if !origins.is_empty() {
+            host.set_allowed_origins(origins)?;
         }
         if let Ok(caller_origin) = std::env::var("COVERT_EXTENSION_ORIGIN") {
             let trimmed = caller_origin.trim();

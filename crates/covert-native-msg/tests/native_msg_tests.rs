@@ -256,3 +256,49 @@ fn test_caller_origin_whitelist_and_unauthorized_caller_rejection() {
     assert_eq!(parsed.matches[0].title, "GitHub");
 }
 
+#[test]
+fn test_default_deny_without_extension_id_refuses_all_requests() {
+    use covert_native_msg::{NativeMsgError, DEFAULT_ALLOWED_ORIGIN, DEFAULT_EXTENSION_ID};
+
+    let host = NativeMessagingHost::new_deny_all();
+    assert!(
+        host.allowed_origins().is_empty(),
+        "new_deny_all must have an empty allowed_origins whitelist"
+    );
+
+    let mut vault = Vault::new("Default Deny Vault");
+    vault.add_item(VaultItem::new_credential(
+        "GitHub",
+        "theo",
+        "secret_pw",
+        Some("https://github.com/login".to_string()),
+    ));
+    host.set_vault(vault);
+
+    // 1. Request without origin is refused
+    let resp_no_origin =
+        host.handle_json_message(r#"{"type":"query","url":"https://github.com/login"}"#);
+    assert!(resp_no_origin.contains(r#""status":"error""#));
+    assert!(resp_no_origin.contains("Unauthorized caller"));
+
+    // 2. Request even with DEFAULT_ALLOWED_ORIGIN in payload is refused because no --extension-id was provided
+    let msg_with_default = format!(
+        r#"{{"type":"query","url":"https://github.com/login","origin":"{}"}}"#,
+        DEFAULT_ALLOWED_ORIGIN
+    );
+    let resp_with_default = host.handle_json_message(&msg_with_default);
+    assert!(resp_with_default.contains(r#""status":"error""#));
+    assert!(resp_with_default.contains("Unauthorized caller origin"));
+
+    // 3. verify_caller refuses even DEFAULT_EXTENSION_ID when no --extension-id was configured
+    assert!(matches!(
+        host.verify_caller(DEFAULT_EXTENSION_ID),
+        Err(NativeMsgError::UnauthorizedCaller(_))
+    ));
+    assert!(matches!(
+        host.verify_caller(DEFAULT_ALLOWED_ORIGIN),
+        Err(NativeMsgError::UnauthorizedCaller(_))
+    ));
+}
+
+

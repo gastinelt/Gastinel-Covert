@@ -125,12 +125,24 @@ impl NativeMessagingHost {
         }
     }
 
+    /// Create a new host instance in strict default-deny mode (`allowed_origins = []`,
+    /// `require_caller_auth = true`). Without an explicit `--extension-id` configured,
+    /// all incoming Native Messaging requests and caller handshakes are refused.
+    pub fn new_deny_all() -> Self {
+        Self {
+            is_vault_unlocked: AtomicBool::new(false),
+            vault: RwLock::new(None),
+            allowed_origins: RwLock::new(Vec::new()),
+            require_caller_auth: AtomicBool::new(true),
+            caller_authorized: AtomicBool::new(false),
+        }
+    }
+
     /// Create a new host instance enforcing strict caller verification against the provided
     /// whitelist of extension IDs or `chrome-extension://<id>/` origins.
     pub fn with_allowed_origins(origins: Vec<String>) -> Result<Self, NativeMsgError> {
-        let host = Self::new();
+        let host = Self::new_deny_all();
         host.set_allowed_origins(origins)?;
-        host.require_caller_auth.store(true, Ordering::SeqCst);
         Ok(host)
     }
 

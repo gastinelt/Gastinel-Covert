@@ -299,6 +299,11 @@ pub struct DaemonArgs {
     #[arg(long)]
     pub native_msg: bool,
 
+    /// Whitelisted browser extension ID(s) allowed to connect in --native-msg mode.
+    /// Without at least one --extension-id, the native host refuses all requests.
+    #[arg(long = "extension-id")]
+    pub extension_ids: Vec<String>,
+
     /// Disable Sentinel threat monitoring (session lock, network ports, anti-debug)
     #[arg(long)]
     pub no_sentinel: bool,
