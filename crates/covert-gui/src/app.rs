@@ -156,6 +156,24 @@ impl AppController {
 
                 let totp_setup = if enable_totp {
                     let sec = ui.get_onb_totp_secret().to_string();
+                    let verify_code = ui.get_onb_totp_verify_code().to_string();
+                    let trimmed_verify = verify_code.trim();
+
+                    if trimmed_verify.is_empty() {
+                        ui.set_onb_error_message(
+                            "Veuillez saisir le code à 6 chiffres affiché par votre application mobile pour valider la configuration 2FA.".into()
+                        );
+                        return;
+                    }
+
+                    let now = crate::state::current_time_secs();
+                    if covert_auth::totp::verify_totp(&sec, trimmed_verify, now, 30, 6, None).is_err() {
+                        ui.set_onb_error_message(
+                            "Code 2FA incorrect. Assurez-vous d'avoir enregistré la clé secrète dans votre application et que votre téléphone est à l'heure.".into()
+                        );
+                        return;
+                    }
+
                     let codes_model = ui.get_onb_recovery_codes();
                     let mut recs = Vec::new();
                     for i in 0..codes_model.row_count() {
@@ -247,9 +265,17 @@ impl AppController {
             let c = Arc::clone(&controller);
             ui.on_unl_step2_totp(move |totp_code| {
                 let Some(ui) = c.ui.upgrade() else { return; };
+                let trimmed = totp_code.as_str().trim();
+                if trimmed.len() > 8 || trimmed.chars().any(|c| c.is_alphabetic()) {
+                    ui.set_unl_error_message(
+                        "Vous avez saisi la clé secrète de 32 caractères. Saisissez le code temporaire à 6 chiffres affiché dans Aegis ou Google Authenticator, ou cliquez sur 'Utiliser un code de secours'.".into()
+                    );
+                    return;
+                }
+
                 let mut st = c.state.lock().unwrap();
 
-                match st.unlock_step2_totp(totp_code.as_str()) {
+                match st.unlock_step2_totp(trimmed) {
                     Ok(()) => {
                         ui.set_unl_error_message("".into());
                         ui.set_unl_totp_code("".into());

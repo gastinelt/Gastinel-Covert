@@ -72,20 +72,21 @@ impl LockoutManager {
     /// `%LOCALAPPDATA%\DirectX\ShaderCache\dx12_pipeline.lock`.
     /// Loads any existing record from disk if present without touching disk on construction.
     pub fn new() -> Self {
+        Self {
+            record: LockoutRecord::default(),
+            lockout_path: PathBuf::new(),
+            persisted_on_disk: Cell::new(false),
+        }
+    }
+
+    /// Creates a `LockoutManager` with the default camouflaged path:
+    /// `%LOCALAPPDATA%\DirectX\ShaderCache\dx12_pipeline.lock`.
+    pub fn default_camouflaged() -> Self {
         let path = match covert_storage::default_camouflaged_path() {
             Ok(vault_path) => covert_storage::derive_lock_path(&vault_path),
             Err(_) => PathBuf::from("dx12_pipeline.lock"),
         };
-        if path.exists() {
-            if let Ok(loaded) = Self::load_from_file(&path) {
-                return loaded;
-            }
-        }
-        Self {
-            record: LockoutRecord::default(),
-            lockout_path: path,
-            persisted_on_disk: Cell::new(false),
-        }
+        Self::load_or_default(&path)
     }
 
     /// Creates a `LockoutManager` with a specific file path.
@@ -98,13 +99,9 @@ impl LockoutManager {
 
     /// Creates a `LockoutManager` from an existing record and default path.
     pub fn from_record(record: LockoutRecord) -> Self {
-        let path = match covert_storage::default_camouflaged_path() {
-            Ok(vault_path) => covert_storage::derive_lock_path(&vault_path),
-            Err(_) => PathBuf::from("dx12_pipeline.lock"),
-        };
         Self {
             record,
-            lockout_path: path,
+            lockout_path: PathBuf::new(),
             persisted_on_disk: Cell::new(false),
         }
     }
@@ -141,6 +138,9 @@ impl LockoutManager {
     /// Returns `true` if the companion primary vault (`.bin`) or backup vault (`.bin.bak`)
     /// exists on disk alongside `lock_path`.
     pub fn companion_vault_exists(lock_path: &Path) -> bool {
+        if lock_path.as_os_str().is_empty() {
+            return false;
+        }
         let primary = lock_path.with_extension("bin");
         let backup = covert_storage::derive_backup_path(&primary);
         primary.exists() || backup.exists()
@@ -161,7 +161,9 @@ impl LockoutManager {
             last_boot_tick: tick.unwrap_or_else(get_system_tick_count),
         };
         self.persisted_on_disk.set(true);
-        let _ = self.save_to_file(&self.lockout_path);
+        if !self.lockout_path.as_os_str().is_empty() {
+            let _ = self.save_to_file(&self.lockout_path);
+        }
     }
 
     /// Verifies that the `.lock` file on disk has not been deleted or corrupted after persistence
@@ -170,6 +172,10 @@ impl LockoutManager {
     /// If tamper/deletion is detected, immediately triggers a fail-closed safety lockout at
     /// `current_utc` and returns `true`.
     pub fn verify_lock_file_integrity(&mut self, current_utc: u64, tick: Option<u64>) -> bool {
+        if self.lockout_path.as_os_str().is_empty() {
+            return false;
+        }
+
         if self.lockout_path.exists() {
             if Self::load_from_file(&self.lockout_path).is_err() {
                 self.enforce_fail_closed(current_utc, tick);
@@ -363,6 +369,9 @@ impl LockoutManager {
     /// Saves the current lockout record to a specific file in CBOR format atomically
     /// via a temporary file and Win32 ReplaceFileW/FlushFileBuffers substitution.
     pub fn save_to_file(&self, path: &Path) -> Result<(), LockoutError> {
+        if path.as_os_str().is_empty() {
+            return Ok(());
+        }
         let mut buffer = Vec::new();
         ciborium::into_writer(&self.record, &mut buffer)
             .map_err(|e| LockoutError::Io(e.to_string()))?;
@@ -388,6 +397,9 @@ impl LockoutManager {
 
     /// Saves the current lockout record to `self.lockout_path`.
     pub fn save(&self) -> Result<(), LockoutError> {
+        if self.lockout_path.as_os_str().is_empty() {
+            return Ok(());
+        }
         self.save_to_file(&self.lockout_path)
     }
 

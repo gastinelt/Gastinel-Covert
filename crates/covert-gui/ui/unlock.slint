@@ -176,6 +176,13 @@ export component UnlockView inherits Rectangle {
                                 }
                             }
 
+                            Text {
+                                text: "Saisissez le code temporaire à 6 chiffres affiché dans votre application (Aegis, 2FAS, Google Authenticator), et non la clé secrète.";
+                                font-family: Theme.font-family;
+                                font-size: 11px;
+                                color: Theme.text-secondary;
+                            }
+
                             HorizontalLayout {
                                 alignment: center;
                                 TouchArea {

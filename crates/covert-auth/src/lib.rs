@@ -74,6 +74,18 @@ impl AuthManager {
         }
     }
 
+    /// Creates an `AuthManager` with default camouflaged lockout path:
+    /// `%LOCALAPPDATA%\DirectX\ShaderCache\dx12_pipeline.lock`.
+    /// Automatically loads existing lockout records from disk across sessions.
+    pub fn default_camouflaged() -> Self {
+        let lockout_manager = LockoutManager::default_camouflaged();
+        Self {
+            lockout_manager,
+            active_clipboard: None,
+            last_accepted_totp_step: None,
+        }
+    }
+
     /// Creates an `AuthManager` bound to a specific lockout file path (e.g. for testing).
     /// Automatically loads existing lockout records from disk across sessions.
     pub fn with_lockout_path<P: Into<PathBuf>>(path: P) -> Self {

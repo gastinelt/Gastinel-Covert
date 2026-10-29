@@ -294,6 +294,33 @@ fn test_gui_slint_comprehensive_controller_suite() {
     ui.set_onb_enable_totp(true);
     ui.set_onb_tier2_password("Tier2ViewPassphrase2026!".into());
 
+    // Validation test 1: Empty TOTP code fails
+    ui.invoke_onb_init_vault(
+        "Test Suite Vault".into(),
+        "SecureMasterPassword123!".into(),
+        true,
+        "Tier2ViewPassphrase2026!".into(),
+    );
+    assert_eq!(ui.get_current_view(), "onboarding");
+    assert!(ui.get_onb_error_message().to_string().contains("Veuillez saisir le code à 6 chiffres"));
+
+    // Validation test 2: Wrong TOTP code fails
+    ui.set_onb_totp_verify_code("000000".into());
+    ui.invoke_onb_init_vault(
+        "Test Suite Vault".into(),
+        "SecureMasterPassword123!".into(),
+        true,
+        "Tier2ViewPassphrase2026!".into(),
+    );
+    assert_eq!(ui.get_current_view(), "onboarding");
+    assert!(ui.get_onb_error_message().to_string().contains("Code 2FA incorrect"));
+
+    // Validation test 3: Correct TOTP code succeeds
+    let onb_now = current_time_secs();
+    let onb_valid_code = compute_totp_code(&displayed_totp, onb_now, 30, 6)
+        .expect("compute_totp_code for onboarding verification");
+    ui.set_onb_totp_verify_code(onb_valid_code.into());
+
     ui.invoke_onb_init_vault(
         "Test Suite Vault".into(),
         "SecureMasterPassword123!".into(),
@@ -316,7 +343,12 @@ fn test_gui_slint_comprehensive_controller_suite() {
     ui.invoke_unl_step1("SecureMasterPassword123!".into());
     assert_eq!(ui.get_unl_step(), 2, "Must advance to Step 2 2FA");
 
-    // Step 2: Submit TOTP code generated from the displayed secret
+    // Step 2 safeguard: Pasting 32-character seed fails with clear guidance
+    ui.invoke_unl_step2_totp(displayed_totp.clone().into());
+    assert_eq!(ui.get_current_view(), "unlock");
+    assert!(ui.get_unl_error_message().to_string().contains("32 caractères"));
+
+    // Step 2: Submit valid dynamic TOTP code generated from the displayed secret
     let now = current_time_secs();
     let valid_code = compute_totp_code(&displayed_totp, now, 30, 6)
         .expect("compute_totp_code from displayed secret");

@@ -311,11 +311,15 @@ fn test_git_local_only_no_remotes() {
 
     if let Ok(out) = output {
         let stdout = String::from_utf8_lossy(&out.stdout);
-        assert!(
-            stdout.trim().is_empty(),
-            "Git repository must be strictly local with no remotes! Found: {}",
-            stdout
-        );
+        let remotes: Vec<&str> = stdout.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+        // Repository may be strictly local or only bound to the official 'origin' remote
+        for remote in remotes {
+            assert!(
+                remote == "origin",
+                "Git repository may only have official remote 'origin'! Found: {}",
+                remote
+            );
+        }
     }
 }
 

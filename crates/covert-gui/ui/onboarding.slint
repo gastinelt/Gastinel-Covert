@@ -6,6 +6,7 @@ export component OnboardingView inherits Rectangle {
     in-out property <string> confirm-password: "";
     in-out property <bool> enable-totp: true;
     in-out property <string> totp-secret: "";
+    in-out property <string> totp-verify-code: "";
     in-out property <[string]> recovery-codes: [];
     in-out property <string> tier2-password: "";
     in-out property <string> error-message: "";
@@ -18,7 +19,7 @@ export component OnboardingView inherits Rectangle {
     background: Theme.surface;
 
     Flickable {
-        content-height: 820px;
+        content-height: 1040px;
 
         VerticalLayout {
             padding: 32px;
@@ -228,6 +229,42 @@ export component OnboardingView inherits Rectangle {
                                     }
                                 }
                             }
+                        }
+
+                        // TOTP Instructions Card
+                        Rectangle {
+                            border-radius: Theme.radius-md;
+                            background: Theme.surface;
+                            border-width: 1px;
+                            border-color: Theme.border;
+
+                            VerticalLayout {
+                                padding: 14px;
+                                spacing: 8px;
+
+                                Text {
+                                    text: "Comment configurer votre application mobile :";
+                                    font-family: Theme.font-family;
+                                    font-size: 12px;
+                                    font-weight: 700;
+                                    color: Theme.text-primary;
+                                }
+
+                                Text {
+                                    text: "1. Ouvrez Aegis, 2FAS ou Google Authenticator sur votre téléphone.\n2. Ajoutez un compte manuellement et collez la clé secrète ci-dessus.\n3. L'application affichera un code à 6 chiffres renouvelé toutes les 30 secondes.\n\nAttention : ne collez jamais cette clé de 32 caractères pour vous connecter. Seul le code dynamique à 6 chiffres est accepté.";
+                                    font-family: Theme.font-family;
+                                    font-size: 11px;
+                                    color: Theme.text-secondary;
+                                }
+                            }
+                        }
+
+                        // TOTP Live Verification Test
+                        totp-verify-input := StyledInput {
+                            label: "Test de validation : saisissez le code à 6 chiffres affiché par votre téléphone";
+                            placeholder: "Ex: 123456";
+                            text: root.totp-verify-code;
+                            edited(val) => { root.totp-verify-code = val; }
                         }
 
                         // Recovery Codes Card
