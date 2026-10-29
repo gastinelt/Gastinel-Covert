@@ -36,6 +36,22 @@ cargo test --workspace
 
 The workspace contains the crates `covert-core`, `covert-storage`, `covert-auth`, `covert-autotype`, `covert-sentinel`, `covert-gui`, `covert-ssh`, `covert-native-msg`, `covert-cli` and the `e2e-tests` suite. The GUI binary is built from `covert-gui`.
 
+## Installation
+
+To package and install the binaries locally into `%LOCALAPPDATA%\Programs\GastinelCovert\bin`:
+
+```powershell
+.\install.ps1
+```
+
+This script builds release binaries, registers the Native Messaging host in `HKCU` (Chrome, Brave, Edge), adds the binary directory to the user `PATH` (providing the `covert` command), and creates a Start Menu shortcut for the GUI without requiring administrator privileges.
+
+To uninstall cleanly:
+
+```powershell
+.\uninstall.ps1
+```
+
 ## License
 
 GNU General Public License v3.0 - see [`LICENSE`](LICENSE).
