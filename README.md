@@ -52,6 +52,23 @@ To uninstall cleanly:
 .\uninstall.ps1
 ```
 
+## Backup & Offsite Protection
+
+Because Gastinel Covert is strictly zero-cloud, you should regularly back up the encrypted vault to an external drive or secondary storage:
+
+```powershell
+# Backup to secondary drive or Documents (defaults to D:\Sauvegardes\Covert if present):
+.\backup-covert.ps1
+
+# Backup to custom external drive / USB:
+.\backup-covert.ps1 -DestinationDir "E:\Backups\Covert"
+
+# Backup + export portable encrypted archive:
+.\backup-covert.ps1 -DestinationDir "E:\Backups\Covert" -Export
+```
+
+The script verifies the master password, validates file size and binary header (`GCOVERT1`), computes SHA-256 integrity, and maintains rolling retention (`-KeepCount`, default 20).
+
 ## License
 
 GNU General Public License v3.0 - see [`LICENSE`](LICENSE).
